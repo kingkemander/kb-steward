@@ -23,7 +23,7 @@ python3 scripts/finalize.py    --out "$OUT" --root "$HOME"       # 7 定目录+�
 | 路径 | 用途 |
 |---|---|
 | `SKILL.md` | 完整方法：分层漏斗、白名单、OCR 教训、命名与两层融合、七步流水线 |
-| `agent-template.md` | 智能体定义（注册到 `.opencode/agents/`） |
+| `agent-template.md` | 智能体定义（仓库根，打包时进 zip 根，由 bootstrap 注册到 `.opencode/agents/`） |
 | `scripts/scan_l1.py` | 1 只登记 + 前置分拣，不读正文 |
 | `scripts/make_report.py` | 2 报告 + 文档哈希/重名 |
 | `scripts/classify_l2.py` | 3 读内容分类、抽主体/日期 |

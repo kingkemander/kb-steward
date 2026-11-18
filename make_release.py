@@ -47,6 +47,10 @@ def pack(version):
                     continue
                 full = pathlib.Path(dirpath) / fn
                 z.write(full, full.relative_to(RUNTIME))
+        # 模板在仓库根（标准包结构），打包时放进 zip 根，供 bootstrap 注册智能体
+        tpl = ROOT / "agent-template.md"
+        if tpl.is_file():
+            z.write(tpl, "agent-template.md")
     return zip_path
 
 
@@ -80,6 +84,7 @@ def main():
     t = re.sub(r"h ?== ?'[0-9a-f]{64}'", f"h == '{boot_sha}'", t)
     t = re.sub(r'assert h == "[0-9a-f]{64}"', f'assert h == "{boot_sha}"', t)
     t = re.sub(r'h == "[0-9a-f]{64}"', f'h == "{boot_sha}"', t)
+    t = t.replace("__SHA__", boot_sha)
     SKILL.write_text(t)
 
     print(f"版本      : v{version}")

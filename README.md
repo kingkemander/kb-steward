@@ -67,12 +67,12 @@
 ```
 kb-steward/
 ├── bootstrap.py                    # 安装器（下载、校验、解压、注册智能体）
+├── agent-template.md               # 智能体模板（mode: all）
 ├── make_release.py                 # 发版工具（打包 + 回填 SHA + 打印命令）
 ├── VERSION                         # 当前版本
 ├── skills/kb-steward/SKILL.md      # 入口技能（安装引导）
 ├── runtime/                        # 运行时源码
 │   ├── SKILL.md                    # 方法与规则全文（14 节）
-│   ├── agent-template.md           # 智能体模板（mode: all）
 │   ├── README.md                   # 运行时说明
 │   ├── scripts/                    # 11 个脚本
 │   └── templates/                  # 命名规则、两层 JSON 格式
