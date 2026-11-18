@@ -15,8 +15,25 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 
 **第一步：下载引导器并校验**
 
+私有仓库需要 Token（`gh auth token` 即可）：
+
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.3.5/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h=='05cb133bad0186a44861c4c426f264526b7de2900d62e4d34294662acf64d6d7',f'校验失败: {h}';p.write_bytes(d);print(p)"
+export GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token)}"
+python3 - <<'EOF'
+import hashlib, json, os, pathlib, urllib.request
+tok = os.environ.get("GITHUB_TOKEN", "")
+ws = pathlib.Path("<工作区>") / ".spaceagents/plugins/kb-steward"
+ws.mkdir(parents=True, exist_ok=True)
+hd = {"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json", "User-Agent": "kb-steward"}
+api = "https://api.github.com/repos/kingkemander/kb-steward/releases/tags/v1.3.6"
+rel = json.load(urllib.request.urlopen(urllib.request.Request(api, headers=hd), timeout=60))
+a = next(x for x in rel["assets"] if x["name"] == "bootstrap.py")
+d = urllib.request.urlopen(urllib.request.Request(a["url"], headers={**hd, "Accept": "application/octet-stream"}), timeout=120).read()
+h = hashlib.sha256(d).hexdigest()
+assert h == "73694aeac4f0e79e2498323919202cb15bd3c9830247e93d3b3103ce3243d08b", f"校验失败: {h}"
+(ws / "bootstrap.py").write_bytes(d)
+print(ws / "bootstrap.py")
+EOF
 ```
 
 **第二步：运行**

@@ -21,12 +21,38 @@ import zipfile
 
 # ============ 需要修改 ============
 REPO = "kingkemander/kb-steward"                 # GitHub 仓库 owner/repo
-VERSION = "v1.3.5"
-ASSET = "runtime-v1.3.5.zip"
+VERSION = "v1.3.6"
+ASSET = "runtime-v1.3.6.zip"
 SHA256 = "1d9b755c45004fc0cc0a05560a1571749c7f9ba3e046097967c331f774a1d1fe"                          # Release zip 的 SHA-256，打包后回填
 PLUGIN_ID = "kb-steward"                 # 落点：.spaceagents/plugins/<PLUGIN_ID>
 AGENT_NAME = "知识库管家"
 # ==================================
+
+
+def fetch_asset(browser_url, token):
+    """有 Token 时走 API（私有仓库可用）；无 Token 走公开下载地址。"""
+    if token:
+        api = f"https://api.github.com/repos/{REPO}/releases/tags/{VERSION}"
+        req = urllib.request.Request(api, headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "kb-steward-bootstrap",
+        })
+        rel = json.load(urllib.request.urlopen(req, timeout=60))
+        asset = next((a for a in rel.get("assets", []) if a.get("name") == ASSET), None)
+        if not asset:
+            raise RuntimeError(f"release {VERSION} 里没有 {ASSET}")
+        req2 = urllib.request.Request(asset["url"], headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/octet-stream",
+            "User-Agent": "kb-steward-bootstrap",
+        })
+        return urllib.request.urlopen(req2, timeout=300).read()
+    req = urllib.request.Request(browser_url, headers={
+        "Accept": "application/octet-stream",
+        "User-Agent": "kb-steward-bootstrap",
+    })
+    return urllib.request.urlopen(req, timeout=180).read()
 
 
 def log(msg):
@@ -67,14 +93,10 @@ def main():
         source = os.path.abspath(args.package)
     else:
         url = f"https://github.com/{REPO}/releases/download/{VERSION}/{ASSET}"
-        log(f"[1/4] 下载 {url}")
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
-        headers = {"Accept": "application/octet-stream"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        log(f"[1/4] 下载 {url}" + ("（私有仓库：走 API + Token）" if token else ""))
         try:
-            req = urllib.request.Request(url, headers=headers)
-            data = urllib.request.urlopen(req, timeout=180).read()
+            data = fetch_asset(url, token)
         except Exception as e:
             log(f"下载失败：{e}")
             if not token:
