@@ -21,8 +21,8 @@ import zipfile
 
 # ============ 需要修改 ============
 REPO = "kingkemander/kb-steward"                 # GitHub 仓库 owner/repo
-VERSION = "v1.3.4"
-ASSET = "runtime-v1.3.4.zip"
+VERSION = "v1.3.5"
+ASSET = "runtime-v1.3.5.zip"
 SHA256 = "1d9b755c45004fc0cc0a05560a1571749c7f9ba3e046097967c331f774a1d1fe"                          # Release zip 的 SHA-256，打包后回填
 PLUGIN_ID = "kb-steward"                 # 落点：.spaceagents/plugins/<PLUGIN_ID>
 AGENT_NAME = "知识库管家"
@@ -68,11 +68,19 @@ def main():
     else:
         url = f"https://github.com/{REPO}/releases/download/{VERSION}/{ASSET}"
         log(f"[1/4] 下载 {url}")
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+        headers = {"Accept": "application/octet-stream"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         try:
-            data = urllib.request.urlopen(url, timeout=180).read()
+            req = urllib.request.Request(url, headers=headers)
+            data = urllib.request.urlopen(req, timeout=180).read()
         except Exception as e:
             log(f"下载失败：{e}")
-            log("排查：仓库是否 Public？Release 是否已 Publish？版本号是否对？")
+            if not token:
+                log("该仓库可能是私有：先 `gh auth login`，再 `export GITHUB_TOKEN=$(gh auth token)` 重试；")
+                log("或让有权限的人把 zip 发你，用 --package <本地 zip> 安装。")
+            log("其他排查：Release 是否已 Publish？版本号是否对？")
             return 2
         source = url
 
