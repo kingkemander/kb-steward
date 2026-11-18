@@ -25,12 +25,12 @@ tok = os.environ.get("GITHUB_TOKEN", "")
 ws = pathlib.Path("<工作区>") / ".spaceagents/plugins/kb-steward"
 ws.mkdir(parents=True, exist_ok=True)
 hd = {"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json", "User-Agent": "kb-steward"}
-api = "https://api.github.com/repos/kingkemander/kb-steward/releases/tags/v1.3.6"
+api = "https://api.github.com/repos/kingkemander/kb-steward/releases/tags/v1.3.7"
 rel = json.load(urllib.request.urlopen(urllib.request.Request(api, headers=hd), timeout=60))
 a = next(x for x in rel["assets"] if x["name"] == "bootstrap.py")
 d = urllib.request.urlopen(urllib.request.Request(a["url"], headers={**hd, "Accept": "application/octet-stream"}), timeout=120).read()
 h = hashlib.sha256(d).hexdigest()
-assert h == "73694aeac4f0e79e2498323919202cb15bd3c9830247e93d3b3103ce3243d08b", f"校验失败: {h}"
+assert h == "04539602c1c97f8b1ea5c4ccb893d9c7173aa585dd0443da9f7142985be7dbb2", f"校验失败: {h}"
 (ws / "bootstrap.py").write_bytes(d)
 print(ws / "bootstrap.py")
 EOF

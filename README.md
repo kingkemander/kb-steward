@@ -67,6 +67,7 @@
 ```
 kb-steward/
 ├── bootstrap.py                    # 安装器（下载、校验、解压、注册智能体）
+├── make_release.py                 # 发版工具（打包 + 回填 SHA + 打印命令）
 ├── VERSION                         # 当前版本
 ├── skills/kb-steward/SKILL.md      # 入口技能（安装引导）
 ├── runtime/                        # 运行时源码
@@ -89,7 +90,7 @@ python3 bootstrap.py --workspace "<工作区>"
 离线/自测：
 
 ```bash
-python3 bootstrap.py --workspace "<工作区>" --package ./runtime-v1.3.6.zip
+python3 bootstrap.py --workspace "<工作区>" --package ./runtime-v1.3.7.zip
 ```
 
 ## 环境变量
@@ -104,7 +105,7 @@ python3 bootstrap.py --workspace "<工作区>" --package ./runtime-v1.3.6.zip
 ## 验证
 
 ```bash
-python3 ".spaceagents/plugins/kb-steward/runtime-v1.3.6/scripts/scan_l1.py" \
+python3 ".spaceagents/plugins/kb-steward/runtime-v1.3.7/scripts/scan_l1.py" \
   --root "$HOME" --out ./kb-第一层 --max-files 500
 ```
 
@@ -125,7 +126,8 @@ Johnny.Decimal（编号 / 中央索引 / ID 不复用）· PARA（个人工作�
 
 ## 版本
 
-- **1.3.6** — 引导器私有仓库下载走 GitHub API（`GITHUB_TOKEN`/`GH_TOKEN`）；发布前脱敏：别名表改为可配置、示例不含真实客户与个人信息；接口地址支持环境变量覆盖；新增文件名强规则校正、上报包导出、部门融合。
+- **1.3.7** — 新增 `make_release.py`：改完代码跑一次即完成打包、SHA 回填与发布命令打印，避免只改代码导致安装校验失败。
+- 1.3.6 — 引导器私有仓库下载走 GitHub API（`GITHUB_TOKEN`/`GH_TOKEN`）；发布前脱敏：别名表改为可配置、示例不含真实客户与个人信息；接口地址支持环境变量覆盖；新增文件名强规则校正、上报包导出、部门融合。
 - 1.3.0 — 新增两层交接：`export_package.py` 上报包导出、`merge_dept.py` 部门融合（去重/冲突分级/签核单）。
 - 1.2.3 — 全文 AI 补齐整合（merge_ai）与终稿输出。
 - 1.1.0 — 七步流水线齐全：扫描、报告、分类、待补批量处理、全文解析、AI 补齐、定目录与改名映射；命名规则校验内置。
