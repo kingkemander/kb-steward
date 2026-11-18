@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""导出「上报包」：把个人终稿索引变成可交接的 zip（只含元数据，不含正文）
+
+产物：
+  上报包-<姓名>-<日期>.zip
+    ├── handover.json   个人索引（元数据）
+    ├── README.md       收件人看这一页
+    └── manifest.json   sha256 校验
+
+同时在终端打印一段可直接复制转发的标准消息。
+"""
+import argparse
+import csv
+import datetime
+import hashlib
+import json
+import os
+import re
+import sys
+import zipfile
+
+SCHEMA = "kb-steward/handover@1.0"
+
+
+def rel_no_user(path, root):
+    p = path.replace(os.sep, "/")
+    root = root.replace(os.sep, "/").rstrip("/")
+    if p.startswith(root):
+        p = p[len(root):].lstrip("/")
+    return p
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", required=True, help="本次整理的目录（含 17-终稿索引包.json）")
+    ap.add_argument("--root", default=os.path.expanduser("~"))
+    ap.add_argument("--name", required=True)
+    ap.add_argument("--dept", required=True)
+    ap.add_argument("--role", default="员工")
+    ap.add_argument("--to", default="", help="收件人（部门经理姓名），可为空")
+    ap.add_argument("--dest", default="", help="zip 输出目录，默认同 --out")
+    args = ap.parse_args()
+
+    OUT = os.path.abspath(args.out)
+    dest = os.path.abspath(args.dest or OUT)
+    p17 = os.path.join(OUT, "17-终稿索引包.json")
+    if not os.path.isfile(p17):
+        print("找不到 17-终稿索引包.json，请先跑 finalize.py")
+        return 2
+
+    final = json.load(open(p17, encoding="utf-8"))
+    # 哈希表（08 里是前 16 位，17 没有完整哈希；这里用 16 位做归并键）
+    hashes = {}
+    p8 = os.path.join(OUT, "08-工作文档-哈希与重名.csv")
+    if os.path.isfile(p8):
+        for r in csv.DictReader(open(p8, encoding="utf-8-sig")):
+            hashes[r["相对路径"]] = r["sha256"]
+
+    items = []
+    sensitive = 0
+    for m in final["items"]:
+        flags = [f for f in (m.get("flags") or "").split(";") if f]
+        if m["action"] == "hold_sensitive":
+            sensitive += 1
+            continue  # 敏感件不出现在上报包里
+        items.append({
+            "key": hashes.get(m["from"], ""),
+            "source_path": rel_no_user(m["from"], args.root),
+            "jd": m["jd"],
+            "subject": m.get("subject", ""),
+            "subject_type": m.get("subject_type", ""),
+            "date": m.get("date", ""),
+            "suggested_name": os.path.basename(m["to"]),
+            "target_path": m["to"],
+            "action": m["action"],
+            "confidence": m.get("confidence", 0),
+            "flags": flags,
+        })
+
+    handover = {
+        "schema": SCHEMA,
+        "from": {"name": args.name, "dept": args.dept, "role": args.role},
+        "to": args.to,
+        "generated_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "items": items,
+        "counts": {
+            "total": len(items),
+            "rename": sum(1 for x in items if x["action"] == "rename"),
+            "keep_name": sum(1 for x in items if x["action"] == "keep_name"),
+            "no_ingest": sum(1 for x in items if x["action"] == "no_ingest"),
+            "sensitive_excluded": sensitive,
+        },
+        "note": "只含元数据，不含文件正文、不含绝对路径。敏感件已排除，仅报数量。",
+    }
+
+    payload = json.dumps(handover, ensure_ascii=False, indent=2).encode()
+    sha = hashlib.sha256(payload).hexdigest()
+    day = datetime.date.today().strftime("%Y%m%d")
+    zip_name = f"上报包-{args.name}-{day}.zip"
+    zip_path = os.path.join(dest, zip_name)
+
+    readme = f"""# 上报包 · {args.name}（{args.dept} / {args.role}）
+
+生成时间：{handover['generated_at']}
+收件人：{args.to or '部门经理'}
+
+## 里面是什么
+
+- 共 {len(items)} 条文件索引（元数据：抽屉、主体、日期、建议名、相对路径）
+- 不含文件正文、不含本机绝对路径
+- 敏感件 {sensitive} 份已排除，只报数量
+
+## 收件人怎么用
+
+1. 打开「知识库管家」智能体
+2. 说：**融合这个上报包**（把 zip 拖进来或给路径）
+3. 它会去重、出冲突清单、生成部门目录
+
+## 校验
+
+handover.json 的 sha256：`{sha}`
+"""
+    manifest = {
+        "schema": SCHEMA,
+        "file": "handover.json",
+        "sha256": sha,
+        "size": len(payload),
+        "generated_at": handover["generated_at"],
+    }
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("handover.json", payload)
+        z.writestr("README.md", readme)
+        z.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+    msg = (f"【目录上行】{args.name}（{args.dept}/{args.role}）｜{SCHEMA}｜"
+           f"载荷：{zip_name}｜需{args.to or '部门经理'}做部门融合")
+    print(json.dumps({
+        "zip": zip_path, "items": len(items), "sensitive_excluded": sensitive,
+        "sha256": sha, "message": msg,
+    }, ensure_ascii=False, indent=2))
+    print("\n把下面这段和 zip 一起发给对方：\n")
+    print(msg)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

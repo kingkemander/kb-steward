@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""定稿：定目录 + 按命名规则生成改名映射（默认 dry-run，不动任何文件）
+
+输入：09-分类结果.csv（或 个人索引包-L3.json）
+输出：
+  15-最终目录树.md
+  16-改名映射.csv / 16-改名映射.json
+  17-终稿索引包.json
+
+命名规则校验：类别_主体_名称_日期.扩展名 —— 4 段、段内无下划线、扩展名只一次、≤100 字符。
+`--apply` 时才把文件**复制**到 `--dest`（不移动、不删原件）。
+"""
+import argparse
+import collections
+import csv
+import json
+import os
+import re
+import shutil
+import sys
+
+JD_LABEL = {
+    "00.01": "规则与命名", "00.03": "待复核",
+    "10.01": "公司资质", "10.02": "荣誉专利",
+    "20.01": "合同业绩", "20.02": "投标文件", "20.03": "验收评价", "20.04": "客户清单",
+    "30.01": "人员证件", "30.02": "劳动合同", "30.03": "体检培训", "30.04": "组织岗位",
+    "40.01": "制度", "40.02": "审批权限", "40.03": "SOP", "40.04": "报价规则",
+    "50.01": "产品资料", "50.02": "检测报告", "50.03": "TDS-MSDS", "50.04": "图纸CAD",
+    "50.05": "技术方案",
+    "60.01": "投标模板", "60.02": "方案模板", "60.03": "表单", "60.04": "品牌资产", "60.05": "营销内容",
+    "70.01": "发票票据", "70.02": "法务文件", "70.03": "审计报告", "70.04": "税务申报",
+    "80.01": "项目档案-进行中", "80.02": "项目档案-已归档",
+}
+
+
+# 文件名强规则：文件名本身足够明确时，覆盖 AI 判定的抽屉。
+# 顺序即优先级。返回 (jd, action, 理由, 名称前缀)；jd 为 None 表示不入库。
+NAME_RULES = [
+    (r"^(t|tmp|temp|test|preview|\u9884\u89c8)[\s\-_.]?.*\.(docx?|pdf|xlsx?)$", None, "no_ingest", "测试/预览文件", None),
+    (r"(pytest|\u6837\u4f8b|sample|demo)", None, "no_ingest", "测试样例", None),
+    (r"(\u5728\u804c|\u79bb\u804c|\u6536\u5165|\u5de5\u4f5c)\u8bc1\u660e", "30.01", None, "人员证明", "证件"),
+    (r"(\u5ba1\u6838|\u5ba1\u67e5|\u8bc4\u5ba1|\u4fee\u6539)\u610f\u89c1|\u95ed\u73af\u6e05\u5355", "80.01", None, "项目审核/修改意见", "项目"),
+    (r"GB\s*/?T?\s*\d{3,}", "50.01", None, "标准规范", "资料"),
+    (r"(\u7edf\u8ba1|\u5730\u7c7b)(?!.*\u56fe)", "80.01", None, "项目统计数据", "项目"),
+    (r"(flange|hex_bolt|bolt|gear|^T\d[_\-])", "50.04", None, "零件图/CAD", "图纸"),
+]
+NAME_RULE_RX = [(re.compile(pat, re.I), jd, act, why, pre) for pat, jd, act, why, pre in NAME_RULES]
+
+
+def match_rule(raw_name):
+    for rx, jd, act, why, pre in NAME_RULE_RX:
+        if rx.search(raw_name or ""):
+            return jd, act, why, pre
+    return None
+
+
+def rebuild_name(prefix, subject, stem, date, ext):
+    stem = re.sub(r"[\u3010\u3011\[\]]", "", stem).strip() or "未命名"
+    stem = re.sub(r"[\\/:*?\"<>|#]", "", stem)
+    stem = stem.replace("_", "-")[:40]
+    subj = subject or "待补"
+    d = date or "待补"
+    n = f"{prefix}_{subj}_{stem}_{d}{ext}"
+    if len(n) > 100:
+        n = f"{prefix}_{subj}_{stem[:24]}_{d}{ext}"
+    return n
+
+
+def check_name(name):
+    """返回 (ok, reasons)"""
+    reasons = []
+    if not name:
+        return False, ["空名"]
+    stem, ext = os.path.splitext(name)
+    parts = stem.split("_")
+    if len(parts) != 4:
+        reasons.append(f"段数={len(parts)}")
+    if any("_" in p for p in parts):
+        reasons.append("段内下划线")
+    if re.search(r"\.(docx?|pdf|pptx?|xlsx?|csv|dwg|dxf)$", stem, re.I):
+        reasons.append("名称段残留扩展名")
+    if len(name) > 100:
+        reasons.append(f"超长{len(name)}")
+    if re.search(r"【(重复|待OCR|待核|副本|最终|新建|作废|旧)】", name):
+        reasons.append("状态标记进名字")
+    if ext.lower() not in (".docx", ".doc", ".pdf", ".ppt", ".pptx", ".xlsx", ".xls",
+                           ".csv", ".dwg", ".dxf"):
+        reasons.append("扩展名不在白名单")
+    return not reasons, reasons
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--root", default=os.path.expanduser("~"))
+    ap.add_argument("--dest", default="", help="apply 时的目标根目录")
+    ap.add_argument("--apply", action="store_true", help="真正复制文件（默认只出映射）")
+    args = ap.parse_args()
+    OUT = os.path.abspath(args.out)
+
+    pkg3 = os.path.join(OUT, "个人索引包-L3.json")
+    if os.path.isfile(pkg3):
+        items = json.load(open(pkg3, encoding="utf-8"))["items"]
+    else:
+        rows = list(csv.DictReader(open(os.path.join(OUT, "09-分类结果.csv"), encoding="utf-8-sig")))
+        items = []
+        for r in rows:
+            items.append({
+                "source_path": r["source_path"], "file_name": r["file_name"],
+                "ext": r["ext"], "size": int(r["size"] or 0),
+                "jd_code": r["jd_code"], "subject": r["subject"], "date": r["date"],
+                "suggested_name": r["suggested_name"], "confidence": float(r["confidence"] or 0),
+                "flags": [f.strip() for f in r["flags"].split("/") if f.strip()],
+                "upload": r["upload"], "subject_type": "project" if "项目" in (r.get("subject") or "") else "",
+            })
+
+    EXCL = ("生成中间产物", "系统导出数据", "工具验证样例", "空表模板")
+
+    mapping = []
+    used = collections.Counter()
+    tree = collections.defaultdict(list)
+    override_count = []
+    for it in items:
+        jd = it["jd_code"]
+        name = it.get("suggested_name") or ""
+        action = "rename"
+        reasons = []
+
+        # 文件名强规则优先于 AI 判定
+        raw_name = os.path.basename(it.get("source_path") or it.get("file_name") or "")
+        hit = match_rule(raw_name)
+        if hit:
+            r_jd, r_act, r_why, r_pre = hit
+            it["flags"].append(f"规则覆盖:{r_why}")
+            override_count.append((raw_name, it["jd_code"], r_jd or r_act, r_why))
+            if r_act == "no_ingest":
+                action = "no_ingest"
+            elif r_jd:
+                jd = r_jd
+                it["jd_code"] = r_jd
+                stem, ext = os.path.splitext(raw_name)
+                name = rebuild_name(r_pre, it.get("subject", ""), stem,
+                                    it.get("date", ""), ext)
+
+        folder = f"{jd} {JD_LABEL.get(jd, '未分类')}"
+
+        if not name:
+            name = it["file_name"]
+            reasons = ["无建议名"]
+            if action == "rename":
+                action = "keep_name"
+        else:
+            ok, reasons = check_name(name)
+            if not ok:
+                action = "hold"
+
+        if any(f in EXCL for f in it["flags"]):
+            action = "no_ingest"
+        if it.get("upload") == "禁上传":
+            action = "hold_sensitive"
+
+        key = (folder, name)
+        used[key] += 1
+        if used[key] > 1:
+            stem, ext = os.path.splitext(name)
+            name = f"{stem}-{used[key]}{ext}"
+            reasons.append("同名加序号")
+
+        target = f"{folder}/{name}"
+        mapping.append({
+            "from": it["source_path"],
+            "to": target,
+            "jd": jd,
+            "subject": it.get("subject", ""),
+            "subject_type": it.get("subject_type", ""),
+            "date": it.get("date", ""),
+            "confidence": it.get("confidence", 0),
+            "flags": ";".join(it["flags"]),
+            "action": action,
+            "name_check": ";".join(reasons),
+        })
+        if action in ("rename", "keep_name"):
+            tree[folder].append(name)
+
+    # 目录树
+    lines = ["# 最终目录树与改名映射（dry-run）", "",
+             f"文件数：{len(mapping)} ｜ 入库抽屉：{len(tree)} ｜ 改名：{sum(1 for m in mapping if m['action']=='rename')}"
+             f" ｜ 保持原名：{sum(1 for m in mapping if m['action']=='keep_name')}"
+             f" ｜ 不入库：{sum(1 for m in mapping if m['action']=='no_ingest')}"
+             f" ｜ 待确认：{sum(1 for m in mapping if m['action']=='hold')}"
+             f" ｜ 敏感：{sum(1 for m in mapping if m['action']=='hold_sensitive')}",
+             "", "## 入库目录树", "", "```"]
+    for folder in sorted(tree):
+        lines.append(f"{folder}/")
+        for n in sorted(tree[folder]):
+            lines.append(f"    {n}")
+    lines += ["```", "",
+              "## 需要人工确认的", ""]
+    hold = [m for m in mapping if m["action"] == "hold"]
+    sens = [m for m in mapping if m["action"] == "hold_sensitive"]
+    clean = [m for m in mapping if m["action"] == "no_ingest"]
+    lines.append(f"- 命名校验不过（hold）：{len(hold)} 份")
+    for m in hold[:20]:
+        lines.append(f"  - `{m['from']}` → {m['name_check']}")
+    lines.append(f"- 敏感件（不上传）：{len(sens)} 份")
+    for m in sens[:10]:
+        lines.append(f"  - `{m['from']}`")
+    lines.append(f"- 不入库（中间产物/工具件）：{len(clean)} 份")
+    with open(os.path.join(OUT, "15-最终目录树.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    # 映射 CSV/JSON
+    fields = ["from", "to", "jd", "subject", "subject_type", "date", "confidence", "action", "name_check", "flags"]
+    with open(os.path.join(OUT, "16-改名映射.csv"), "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        for m in mapping:
+            w.writerow({k: m.get(k, "") for k in fields})
+    json.dump({"schema": "kb-steward/rename-map@0.3", "mode": "apply" if args.apply else "dry-run",
+               "items": mapping},
+              open(os.path.join(OUT, "16-改名映射.json"), "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+
+    # 终稿索引
+    json.dump({"schema": "kb-steward/final-index@1.0", "items": mapping,
+               "folders": {k: len(v) for k, v in tree.items()}},
+              open(os.path.join(OUT, "17-终稿索引包.json"), "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+
+    copied = 0
+    if args.apply:
+        dest = os.path.abspath(args.dest or os.path.join(OUT, "KB"))
+        for m in mapping:
+            if m["action"] != "rename":
+                continue
+            src = os.path.join(args.root, m["from"])
+            dst = os.path.join(dest, m["to"])
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if os.path.isfile(src):
+                shutil.copy2(src, dst)
+                copied += 1
+
+    print(json.dumps({
+        "files": len(mapping), "folders": len(tree),
+        "rename": sum(1 for m in mapping if m["action"] == "rename"),
+        "keep_name": sum(1 for m in mapping if m["action"] == "keep_name"),
+        "hold": sum(1 for m in mapping if m["action"] == "hold"),
+        "sensitive": sum(1 for m in mapping if m["action"] == "hold_sensitive"),
+        "no_ingest": sum(1 for m in mapping if m["action"] == "no_ingest"),
+        "copied": copied,
+        "outputs": ["15-最终目录树.md", "16-改名映射.csv", "16-改名映射.json", "17-终稿索引包.json"],
+    }, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
