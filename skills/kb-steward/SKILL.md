@@ -55,6 +55,7 @@ cat "<工作区>/.spaceagents/plugins/kb-steward/current.json"
 4. 失败 → 保持旧版本，把错误如实告诉用户。
 5. 用户说「立即更新」→ 跳过节流。
 6. 更新后提醒：**需新建会话才生效**。
+7. 把每次检查时间写进 `<工作区>/.spaceagents/plugins/kb-steward/update-state.json` 的 `last_checked_at`；更新失败记 `last_result=update_failed` 与原始错误，业务继续用旧版本。
 
 ## 卸载
 
