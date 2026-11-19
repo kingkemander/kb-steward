@@ -159,6 +159,9 @@ def split_text(text, limit=SEG_LIMIT, overlap=SEG_OVERLAP, max_segs=15):
 
 def process_one(rec):
     text = rec.get("text", "")
+    if rec.get("status") == "legacy_text":
+        text = ("【说明】以下内容由旧格式文件（.doc/.ppt）直接抽取，可能含碎片或乱码。"
+                "只写能从片段中确认的字段；不确定就留空，不要猜。\n" + text)
     name, path = rec["file_name"], rec["source_path"]
     if not text.strip():
         return {"jd": "", "subject": "", "subject_type": "", "date": "",

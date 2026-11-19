@@ -50,7 +50,9 @@ python3 "{{RUNTIME_ROOT}}/scripts/doctor.py"
 
 要如实告诉用户三件事：**能解析什么、缺什么、装到哪个盘**。
 
-常见缺口：`.xls` 缺 `xlrd`、`.pptx` 缺 `python-pptx`、老式 `.doc/.xls/.ppt` 需要 LibreOffice（Windows 没有 textutil）、扫描件需要 tesseract。
+常见缺口：`.xls` 缺 `xlrd`、`.pptx` 缺 `python-pptx`、`.doc/.ppt` 缺 `olefile`、扫描件缺 tesseract。
+
+**旧格式不需要装 LibreOffice**：`.doc/.ppt` 由 `olefile` 抽取原文，再交模型判断归属与主体；抽不到就标 `legacy_unreadable` 列清单给用户。
 
 缺依赖时**停下**，让用户指定盘位（**不许默认装 C 盘或系统 Python**）：
 

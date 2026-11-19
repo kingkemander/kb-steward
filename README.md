@@ -67,13 +67,12 @@ python3 runtime/scripts/doctor.py                                  # 看缺什�
 python3 runtime/scripts/install_deps.py --target "<盘位>/kb-deps"  # 装到指定盘
 ```
 
-| 格式 | 最小依赖 | 是否需 LibreOffice |
+| 格式 | 怎么解析 | 需要额外工具吗 |
 |---|---|---|
 | `.docx` / `.xlsx` / `.pptx` / `.pdf` | python-docx / openpyxl / python-pptx / pymupdf | 否 |
-| `.xls` | `xlrd`（1 MB） | **否**，直读 |
-| `.doc` | macOS `textutil`（自带）／Windows `antiword`（1–2 MB） | 一般不需要 |
-| `.ppt` | `olefile`（200 KB） | 一般不需要 |
-| 扫描件 | `tesseract` | — |
+| `.xls` | `xlrd` 结构化直读 | 否 |
+| `.doc` / `.ppt` | `olefile` 抽原文 → 交大模型判断归属与主体 | **否**（不装 LibreOffice / antiword） |
+| 扫描件 | `tesseract` | 可选 |
 
 **不默认装系统盘**。
 

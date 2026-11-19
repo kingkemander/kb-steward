@@ -550,11 +550,12 @@ python3 scripts/doctor.py --deps "<盘位>/kb-deps"   # 已装到自定义目录
 
 **老格式不等于必须装 LibreOffice**：
 
-| 格式 | 最小依赖 | 说明 |
+| 格式 | 做法 | 说明 |
 |---|---|---|
-| `.xls` | `xlrd`（1 MB） | 直读，不转换 |
-| `.doc` | macOS `textutil`（自带）／Windows `antiword`（1–2 MB） | 只读文本；要保表格样式才需要 LibreOffice |
-| `.ppt` | `olefile`（200 KB） | 抽取文本；复杂版式才需要 LibreOffice |
+| `.xls` | `xlrd` 直读 | 结构化解析，准确，不用转换 |
+| `.doc` / `.ppt` | `olefile` 抽 OLE 流里的原文 → 交大模型判断 | **不装 LibreOffice / antiword**；抽不到就标 `legacy_unreadable` 列清单 |
+
+为什么不用转换工具：本地转换会丢表格与版式，转出来的文本和原文对不上，分类和命名反而偏。抽取原文 + 模型判断，比"转成纯文本再猜"更接近事实。模型只写能从片段确认的字段，不确定留空。
 
 `doctor.py` 会输出 `doc_reader` / `ppt_reader` 实际用了哪个，以及 `notes`（按平台给最小依赖建议）。
 

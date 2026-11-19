@@ -93,21 +93,20 @@ def extract_full(path, ext):
                     continue
             return "", "待转换"
         if ext == ".doc":
-            # 免安装优先：macOS textutil → antiword → catdoc → LibreOffice
+            # macOS 自带 textutil 质量最好；没有就走 OLE 抽原文，交给大模型判断
             if shutil.which("textutil"):
                 r = subprocess.run(["textutil", "-convert", "txt", "-stdout", path],
                                    capture_output=True, timeout=60)
                 if r.returncode == 0 and r.stdout.strip():
                     return r.stdout.decode("utf-8", "ignore"), "ok"
-            for cmd in (["antiword", path], ["catdoc", path]):
-                if shutil.which(cmd[0]):
-                    r = subprocess.run(cmd, capture_output=True, timeout=60)
-                    if r.returncode == 0 and r.stdout.strip():
-                        return r.stdout.decode("utf-8", "ignore"), "ok"
-            converted = _soffice_convert(path, pathlib_suffix=".txt")
-            if converted:
-                return converted, "ok"
-            return "", "need_converter:doc"
+            try:
+                import parse_legacy
+                t, st2, _q = parse_legacy.extract(path)
+            except Exception:
+                t, st2 = "", "legacy_unreadable"
+            if st2 == "legacy_text":
+                return t, "legacy_text"
+            return "", "legacy_unreadable"
         if ext == ".xls":
             import xlrd
             wb = xlrd.open_workbook(path)
@@ -121,25 +120,14 @@ def extract_full(path, ext):
                         parts.append(" | ".join(vals))
             return "\n".join(parts), "ok"
         if ext == ".ppt":
-            # 先试 olefile 直接抽文本（免安装）；不行再走 LibreOffice
             try:
-                import olefile
-                if olefile.isOleFile(path):
-                    ole = olefile.OleFileIO(path)
-                    if ole.exists("PowerPoint Document"):
-                        raw = ole.openstream("PowerPoint Document").read()
-                        ole.close()
-                        t = raw.decode("utf-16-le", errors="ignore")
-                        seg = re.findall(r"[\u4e00-\u9fa5A-Za-z0-9，。；：、（）「」%\-\.\s]{6,}", t)
-                        txt = "\n".join(x.strip() for x in seg if len(x.strip()) >= 6)
-                        if len(txt) >= 40:
-                            return txt[:MAX_CHARS], "ok"
+                import parse_legacy
+                t, st2, _q = parse_legacy.extract(path)
             except Exception:
-                pass
-            converted = _soffice_convert(path, pathlib_suffix=".txt")
-            if converted:
-                return converted, "ok"
-            return "", "need_converter:ppt"
+                t, st2 = "", "legacy_unreadable"
+            if st2 == "legacy_text":
+                return t, "legacy_text"
+            return "", "legacy_unreadable"
         if ext == ".dxf":
             txt = []
             with open(path, "r", errors="ignore") as f:

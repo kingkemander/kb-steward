@@ -29,10 +29,8 @@ REQUIRED = [
 # (命令名, 用途, 说明)
 TOOLS = [
     ("textutil", "转换 .doc（免安装）", "macOS 系统自带"),
-    ("antiword", "转换 .doc（免安装，~1MB）", "Windows/Linux 可选"),
-    ("catdoc", "转换 .doc（免安装）", "catdoc 套件"),
-    ("soffice", "转换 .doc/.ppt（全能，~300MB）", "LibreOffice，可最后再装"),
-    ("libreoffice", "转换老格式（Linux 别名）", "LibreOffice"),
+    ("antiword", "转换 .doc（可选）", "Windows/Linux；不装则走模型兜底"),
+    ("soffice", "转换 .doc/.ppt（可选）", "LibreOffice；不装则走模型兜底"),
     ("tesseract", "扫描件 OCR", "可选；不装则标「待OCR」"),
 ]
 
@@ -104,8 +102,10 @@ def main():
     missing_mods = [m for m in mods if not m["ok"]]
     ok = {t["cmd"]: t["ok"] for t in tools}
     has_soffice = ok.get("soffice") or ok.get("libreoffice")
-    has_doc_reader = ok.get("textutil") or ok.get("antiword") or ok.get("catdoc") or has_soffice
-    has_ppt_reader = has_module("olefile") or has_soffice
+    has_legacy = has_module("olefile")          # 旧格式靠 OLE 抽文本 + 模型判断
+    has_api_key = bool(os.environ.get("SPACEAGENTS_AUTO_API_KEY", ""))
+    has_doc_reader = has_legacy
+    has_ppt_reader = has_legacy
     has_ocr = ok.get("tesseract")
 
     can = []
@@ -117,25 +117,20 @@ def main():
             can.append("可解析：" + "、".join(ok_ext))
     if has_module("xlrd"):
         can.append(".xls 直读（无需转换）")
-    if has_doc_reader:
-        can.append(".doc 可转换后解析")
-    if has_ppt_reader:
-        can.append(".ppt 可抽文本" + ("（olefile）" if has_module("olefile") else "（LibreOffice）"))
+    if has_legacy:
+        can.append(".doc/.ppt 抽取原文后交模型判断" + ("" if has_api_key else "（需要算力 Key）"))
     if has_ocr:
         can.append("扫描件可 OCR")
 
     notes = []
     if not has_module("xlrd"):
-        notes.append(".xls：装 xlrd（约 1 MB）即可直读，不需要装 LibreOffice。")
-    if not has_doc_reader:
-        if platform.system() == "Darwin":
-            notes.append(".doc：macOS 自带 textutil，本机没有，检查系统版本。")
-        else:
-            notes.append(".doc：装 antiword（约 1–2 MB）即可读文本；需要保表格/样式再考虑 LibreOffice。")
-    elif not has_soffice and not ok.get("textutil"):
-        notes.append(".doc：用 antiword 读文本，表格样式会有损失。")
-    if not has_module("olefile") and not has_soffice:
-        notes.append(".ppt：装 olefile（约 200 KB）可先抽文本；复杂版式需 LibreOffice。")
+        notes.append(".xls：装 xlrd（约 1 MB）即可直读，不需要装转换工具。")
+    if not has_module("olefile"):
+        notes.append("旧格式 .doc/.ppt：装 olefile（约 200 KB）抽原文，交给大模型判断归属。")
+    elif not has_api_key:
+        notes.append("旧格式 .doc/.ppt：已能抽原文，但没有算力 Key，只能按规则粗分。")
+    else:
+        notes.append("旧格式 .doc/.ppt：抽取原文后交模型判断，不装 LibreOffice/antiword。")
     if not has_ocr:
         notes.append("扫描件：不装 tesseract 会标「待OCR」，不影响其他格式。")
 
@@ -149,7 +144,7 @@ def main():
         "volumes": volumes(),
         "can_parse": can,
         "missing": [m["pip"] for m in missing_mods],
-        "need_old_format_converter": not has_doc_reader,
+        "need_old_format_converter": False,   # 旧格式走 OLE 抽文本 + 模型，不再要求转换器
         "doc_reader": ("textutil" if ok.get("textutil") else
                        "antiword" if ok.get("antiword") else
                        "catdoc" if ok.get("catdoc") else
