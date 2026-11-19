@@ -70,6 +70,7 @@ def main():
         return 2
     pkg = json.load(open(p17, encoding="utf-8"))
     items = pkg.get("items", [])
+    folders_meta = pkg.get("folders") or {}
     heads = load_heads(OUT)
 
     keep = [x for x in items if x.get("action") in ("rename", "keep_name")]
@@ -108,6 +109,11 @@ def main():
         title = f"{jd} {JD_LABEL.get(jd, '未分类')}"
         lines.append(f"## {title}（{len(g)} 份）")
         lines.append("")
+        fkey = next((k for k in folders_meta if k == jd or k.startswith(jd + " ")), "")
+        ai = (folders_meta.get(fkey) or {}).get("ai_summary") or ""
+        if ai:
+            lines.append(f"> {ai}")
+            lines.append("")
         for x in g:
             new_name = os.path.basename(x.get("to", ""))
             src = x.get("from", "")

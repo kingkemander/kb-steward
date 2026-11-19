@@ -21,9 +21,9 @@ import zipfile
 
 # ============ 需要修改 ============
 REPO = "kingkemander/kb-steward"                 # GitHub 仓库 owner/repo
-VERSION = "v1.4.6"
-ASSET = "runtime-v1.4.6.zip"
-SHA256 = "68e510e7f72a6f29c0db76f60087acf8d2ed92f4e40886766242881cb1048f72"                          # Release zip 的 SHA-256，打包后回填
+VERSION = "v1.4.7"
+ASSET = "runtime-v1.4.7.zip"
+SHA256 = "711eaa77d57fb115a9d64fc56891e2896be65a7accff2d056bc08845ab8cf8f5"                          # Release zip 的 SHA-256，打包后回填
 PLUGIN_ID = "kb-steward"                 # 落点：.spaceagents/plugins/<PLUGIN_ID>
 AGENT_NAME = "知识库管家"
 # ==================================
