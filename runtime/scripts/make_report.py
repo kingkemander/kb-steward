@@ -70,7 +70,7 @@ def main():
             hg = len(by_hash.get(x["sha256"], []))
             ng = len(by_name.get(x["文件名"], []))
             w.writerow([x["相对路径"], x["文件名"], x["扩展名"], x["大小"], x["通道"],
-                        x["sha256"][:16], hg if hg > 1 else "", ng if ng > 1 else ""])
+                        x["sha256"], hg if hg > 1 else "", ng if ng > 1 else ""])
 
     # 分布
     doc_dir = Counter("(根目录)" if "/" not in r["相对路径"] else r["相对路径"].rsplit("/", 1)[0] for r in docs)

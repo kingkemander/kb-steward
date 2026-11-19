@@ -142,6 +142,8 @@ def main():
     count = 0
     multi = len(roots) > 1
     stopped = False
+    seen_real = set()          # 跟随符号链接后按真实路径去重，防循环
+    followed_links = 0
 
     for root in roots:
         if stopped:
@@ -150,6 +152,13 @@ def main():
         stack = [root]
         while stack:
             cur = stack.pop()
+            try:
+                real = os.path.realpath(cur)
+                if real in seen_real:
+                    continue
+                seen_real.add(real)
+            except OSError:
+                pass
             try:
                 with os.scandir(cur) as it:
                     entries = list(it)
@@ -162,7 +171,11 @@ def main():
 
             for e in entries:
                 try:
-                    is_dir = e.is_dir(follow_symlinks=False)
+                    # 跟随符号链接：用户桌面/文档常把大目录迁到外接盘后留链接，
+                    # 不跟随会整目录漏扫（实测一次丢 105 份工作文档）
+                    is_dir = e.is_dir(follow_symlinks=True)
+                    if is_dir and e.is_symlink():
+                        followed_links += 1
                 except OSError:
                     continue
                 rel0 = os.path.relpath(e.path, root)
@@ -268,6 +281,7 @@ def main():
         "doc_ext_counts": dict(doc_ext.most_common()),
         "size_by_verdict": {k: human_size(v) for k, v in size_by_verdict.items()},
         "top_dirs": dict(top_dirs.most_common(40)),
+        "followed_symlinks": followed_links,
         "skipped_dirs_count": len(skipped_dirs),
         "skipped_dirs_sample": skipped_dirs[:80],
         "error_count": len(errors),
@@ -280,7 +294,7 @@ def main():
     print(json.dumps({k: summary[k] for k in
                       ("root", "elapsed_sec", "total_files", "total_size",
                        "verdict_counts", "channel_counts", "doc_ext_counts",
-                       "skipped_dirs_count", "error_count")},
+                       "followed_symlinks", "skipped_dirs_count", "error_count")},
                      ensure_ascii=False, indent=2))
 
 

@@ -2,7 +2,9 @@
 
 > 两层 = **个人层**（每人自己电脑的索引）+ **职位判定层**（员工 / 部门经理 / 总经理各自能做什么）。
 > 融合 ≠ 把几套文件夹树拼起来；融合 = 一份文件只存一次，用「JD 编号 + 权限域」生成不同视图。
-> 本文件与实际脚本产出一致：`handover@1.0` 由 `export_package.py` 生成，`dept-catalog@1.0` 由 `merge_dept.py` 生成。
+> 本文件与实际脚本产出一致：`handover@1.1` 由 `export_package.py` 生成，`final-index@2.0` 由 `finalize.py` 生成，`dept-catalog@1.0` 由 `merge_dept.py` 生成。
+>
+> **带哈希是硬要求**：个人包/终稿包每一项都必须有完整 `sha256`，且带 owner 三字段（姓名/部门/职位）。
 
 ## 一、四种产物
 
@@ -26,13 +28,20 @@
 
 ```json
 {
-  "schema": "kb-steward/handover@1.0",
+  "schema": "kb-steward/handover@1.1",
   "from": { "name": "张三", "dept": "交付部", "role": "员工" },
   "to": "李经理",
   "generated_at": "2026-11-18T18:15:31+08:00",
+  "tool_version": "kb-steward 1.4.4",
+  "source_total": 396,
   "items": [
     {
-      "key": "ea98323351edb8b8",
+      "key": "ea98323351edb8b8601ce558cb9d2f93e9d1dd80dc81a9b733315019d6205365",
+      "sha256": "ea98323351edb8b8601ce558cb9d2f93e9d1dd80dc81a9b733315019d6205365",
+      "size": "14.0KB",
+      "owner_name": "张三",
+      "owner_dept": "交付部",
+      "owner_role": "E",
       "source_path": "Downloads/发票与Excel逐项对照表.xlsx",
       "jd": "70.01",
       "subject": "",
@@ -56,13 +65,15 @@
 `manifest.json` 校验 handover.json：
 
 ```json
-{ "schema": "kb-steward/handover@1.0", "file": "handover.json",
+{ "schema": "kb-steward/handover@1.1", "file": "handover.json",
   "sha256": "a96a31f1…", "size": 246074, "generated_at": "…" }
 ```
 
 字段纪律：
 
-- `key` = 文件内容哈希（跨人同文件靠它识别重复）；缺失时由接收端用 `source_path|suggested_name` 兜底。
+- `key` = `sha256`（完整 64 位），跨人同文件靠它识别重复；两者必须一致。
+- `sha256` 必须是**完整 64 位**，不是前 12/16 位缩写；`size` 用人类可读字符串（`14.0KB`），原值可由 `01-全量文件清单.csv` 的「字节」列对上。
+- `owner_name` / `owner_dept` / `owner_role` 每项都要有，便于部门融合时按人回溯；`owner_role` 用 `E`/`M`/`G`。
 - `source_path` / `target_path` 一律相对家目录，不带用户名、不带盘符。
 - `action` 只有 `rename` / `keep_name` / `no_ingest`；`hold_sensitive` 的条目**不进 items**，只进 `counts.sensitive_excluded`。
 - `confidence` < 0.7 或 `flags` 含 `主体待补` / `继承待核` / `日期待核` → 接收端列入待复核，不进经理签核单。
@@ -142,7 +153,7 @@
 实例：
 
 ```
-【目录上行】张三（交付部/员工）｜kb-steward/handover@1.0｜载荷：上报包-张三-20261118.zip｜需李经理做部门融合
+【目录上行】张三（交付部/员工）｜kb-steward/handover@1.1｜载荷：上报包-张三-20261118.zip｜需李经理做部门融合
 ```
 
 一次只发一件事，不合并类型；退回必须写原因；不代发、不代上传。

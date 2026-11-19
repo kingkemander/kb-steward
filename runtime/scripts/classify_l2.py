@@ -244,9 +244,10 @@ def pick_subject(text, name, path):
 ALIASES = {}
 
 DATE_PATTERNS = [
-    re.compile(r"(20\d{2})[-_.年](\d{1,2})[-_.月](\d{1,2})"),
-    re.compile(r"(20\d{2})[-_.年](\d{1,2})月?"),
-    re.compile(r"(20\d{2})"),
+    re.compile(r"(20\d{2})(\d{2})(\d{2})(?!\d)"),            # 20250702
+    re.compile(r"(20\d{2})[-_.年](\d{1,2})[-_.月](\d{1,2})"),  # 2025-07-02
+    re.compile(r"(20\d{2})[-_.年](\d{1,2})月?"),                # 2025-07 / 2025年7月
+    re.compile(r"(20\d{2})"),                                   # 只到年
 ]
 
 
@@ -256,9 +257,12 @@ def pick_date(name, path, text):
         if m:
             g = m.groups()
             y = g[0]
-            mo = g[1] if len(g) > 1 and g[1] else "01"
-            d = g[2] if len(g) > 2 and g[2] else "01"
-            return f"{y}-{int(mo):02d}-{int(d):02d}", "文件名"
+            if len(g) == 1:
+                return y, "文件名"          # 只到年就写年，不造 01-01
+            mo = g[1]
+            if len(g) == 2 or not g[2]:
+                return f"{y}-{int(mo):02d}", "文件名"
+            return f"{y}-{int(mo):02d}-{int(g[2]):02d}", "文件名"
     # 父目录（只到年，不造月日）
     for seg in reversed(path.split("/")[:-1]):
         m = re.search(r"(20\d{2})", seg)

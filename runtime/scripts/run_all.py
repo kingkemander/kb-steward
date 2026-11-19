@@ -167,13 +167,13 @@ def main():
             print("\n没有 AI 结果，后续定目录会退回规则结果。")
     else:
         run("[6/9] AI 补齐主体与日期", [script("ai_fill.py"), "--out", OUT], allow_fail=True)
-        if os.path.isfile(os.path.join(OUT, "个人索引包-L3.json")):
-            print("\n[7/9] 已存在索引包，跳过 merge_ai")
-        else:
-            run("[7/9] 合并 AI 结果", [script("merge_ai.py"), "--out", OUT], allow_fail=True)
+        # 每次都重跑合并：上游分类/抽取变了，旧 L3 会和新结果打架
+        run("[7/9] 合并 AI 结果", [script("merge_ai.py"), "--out", OUT], allow_fail=True)
 
     run("[8/9] 定目录与改名映射", [script("finalize.py"), "--out", OUT,
-                              "--root", scopes[0], "--keep-orig"])
+                              "--root", scopes[0], "--keep-orig",
+                              "--name", args.name, "--dept", args.dept,
+                              "--role", getattr(args, "role", "") or ""])
     run("[9/9] 生成人读索引", [script("make_human_index.py"), "--out", OUT,
                            "--name", args.name, "--dept", args.dept])
 

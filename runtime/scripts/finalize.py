@@ -17,6 +17,7 @@ import csv
 import json
 import os
 import re
+import hashlib
 import shutil
 import sys
 
@@ -99,6 +100,9 @@ def main():
     ap.add_argument("--apply", action="store_true", help="真正复制文件（默认只出映射）")
     ap.add_argument("--keep-orig", dest="keep_orig", action="store_true", default=True,
                     help="新文件名末尾括注原文件名（默认开）")
+    ap.add_argument("--name", default="", help="归档人姓名（写进索引）")
+    ap.add_argument("--dept", default="", help="部门（写进索引）")
+    ap.add_argument("--role", default="", help="职位：员工/部门经理/总经理 或 E/M/G")
     ap.add_argument("--no-keep-orig", dest="keep_orig", action="store_false",
                     help="新文件名不带原文件名括注")
     args = ap.parse_args()
@@ -125,6 +129,60 @@ def main():
     mapping = []
     used = collections.Counter()
     tree = collections.defaultdict(list)
+    # 哈希与大小：索引必须可校验，每份文件都带完整 sha256 与字节数
+    sha_map, size_map = {}, {}
+    p8 = os.path.join(OUT, "08-工作文档-哈希与重名.csv")
+    if os.path.isfile(p8):
+        for r in csv.DictReader(open(p8, encoding="utf-8-sig")):
+            sha_map[r["相对路径"]] = r.get("sha256", "")
+            size_map[r["相对路径"]] = r.get("大小", "")
+    p1 = os.path.join(OUT, "01-全量文件清单.csv")
+    if os.path.isfile(p1):
+        for r in csv.DictReader(open(p1, encoding="utf-8-sig")):
+            k = r.get("相对路径") or r.get("path") or ""
+            if k and k not in size_map:
+                size_map[k] = r.get("大小") or r.get("size") or ""
+
+    ROLE_MAP = {"员工": "E", "部门经理": "M", "总经理": "G", "E": "E", "M": "M", "G": "G", "": ""}
+    def file_sha(path):
+        h = hashlib.sha256()
+        try:
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+        except OSError:
+            return ""
+
+    def human(n):
+        for u in ("B", "KB", "MB", "GB"):
+            if n < 1024:
+                return f"{n:.1f}{u}" if u != "B" else f"{n}B"
+            n /= 1024
+        return f"{n:.1f}TB"
+
+    def sha_of(it):
+        v = sha_map.get(it["source_path"], "")
+        if v:
+            return v
+        p = os.path.join(args.root, it["source_path"])
+        v = file_sha(p) if os.path.isfile(p) else ""
+        if v:
+            sha_map[it["source_path"]] = v
+        return v
+
+    def size_of(it):
+        v = size_map.get(it["source_path"], "")
+        if v:
+            return v
+        p = os.path.join(args.root, it["source_path"])
+        try:
+            return human(os.path.getsize(p))
+        except OSError:
+            return ""
+
+    owner = {"name": args.name, "dept": args.dept,
+             "role": ROLE_MAP.get((args.role or "").strip(), "")}
     override_count = []
     for it in items:
         jd = it["jd_code"]
@@ -183,6 +241,11 @@ def main():
         mapping.append({
             "from": it["source_path"],
             "to": target,
+            "sha256": sha_of(it),
+            "size": size_of(it),
+            "owner_name": owner["name"],
+            "owner_dept": owner["dept"],
+            "owner_role": owner["role"],
             "jd": jd,
             "subject": it.get("subject", ""),
             "subject_type": it.get("subject_type", ""),
@@ -223,7 +286,8 @@ def main():
         f.write("\n".join(lines))
 
     # 映射 CSV/JSON
-    fields = ["from", "to", "jd", "subject", "subject_type", "date", "confidence", "action", "name_check", "flags"]
+    fields = ["from", "to", "sha256", "size", "owner_name", "owner_dept", "owner_role",
+              "jd", "subject", "subject_type", "date", "confidence", "action", "name_check", "flags"]
     with open(os.path.join(OUT, "16-改名映射.csv"), "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
@@ -235,7 +299,23 @@ def main():
               ensure_ascii=False, indent=2)
 
     # 终稿索引
-    json.dump({"schema": "kb-steward/final-index@1.0", "items": mapping,
+    try:
+        ver = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "VERSION"), encoding="utf-8").read().strip()
+    except Exception:
+        ver = ""
+    json.dump({"schema": "kb-steward/final-index@2.0",
+               "owner": owner,
+               "generated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+               "tool": f"kb-steward {ver}".strip(),
+               "source_root": args.root,
+               "summary": {"files": len(mapping),
+                           "rename": sum(1 for m in mapping if m["action"] == "rename"),
+                           "keep_name": sum(1 for m in mapping if m["action"] == "keep_name"),
+                           "no_ingest": sum(1 for m in mapping if m["action"] == "no_ingest"),
+                           "hold_sensitive": sum(1 for m in mapping if m["action"] == "hold_sensitive"),
+                           "folders": len(tree)},
+               "items": mapping,
                "folders": {k: len(v) for k, v in tree.items()}},
               open(os.path.join(OUT, "17-终稿索引包.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=2)

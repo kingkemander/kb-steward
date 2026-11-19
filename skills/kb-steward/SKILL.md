@@ -16,7 +16,7 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 **第一步：下载引导器并校验**
 
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.4.3/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == '3890fd8e5b7d92ae8ebb6f69277581792e123bdb94534eb44fd6abe7c8fce850',f'校验失败: {h}';p.write_bytes(d);print(p)"
+python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.4.4/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == '0ec554d1a6b4d37b1c0c8e6c23f35ccac04056fabe53f3a91767dda147612b21',f'校验失败: {h}';p.write_bytes(d);print(p)"
 ```
 
 **第二步：运行**

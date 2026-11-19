@@ -20,7 +20,7 @@ import re
 import sys
 import zipfile
 
-SCHEMA = "kb-steward/handover@1.0"
+SCHEMA = "kb-steward/handover@1.1"
 
 
 def rel_no_user(path, root):
@@ -50,12 +50,13 @@ def main():
         return 2
 
     final = json.load(open(p17, encoding="utf-8"))
-    # 哈希表（08 里是前 16 位，17 没有完整哈希；这里用 16 位做归并键）
-    hashes = {}
+    # 哈希表：17 里已有完整 sha256；老产物回退到 08
+    hashes, sizes = {}, {}
     p8 = os.path.join(OUT, "08-工作文档-哈希与重名.csv")
     if os.path.isfile(p8):
         for r in csv.DictReader(open(p8, encoding="utf-8-sig")):
             hashes[r["相对路径"]] = r["sha256"]
+            sizes[r["相对路径"]] = r.get("大小", "")
 
     items = []
     sensitive = 0
@@ -65,7 +66,12 @@ def main():
             sensitive += 1
             continue  # 敏感件不出现在上报包里
         items.append({
-            "key": hashes.get(m["from"], ""),
+            "key": m.get("sha256") or hashes.get(m["from"], ""),
+            "sha256": m.get("sha256") or hashes.get(m["from"], ""),
+            "size": m.get("size") or sizes.get(m["from"], ""),
+            "owner_name": m.get("owner_name") or args.name,
+            "owner_dept": m.get("owner_dept") or args.dept,
+            "owner_role": m.get("owner_role") or args.role,
             "source_path": rel_no_user(m["from"], args.root),
             "jd": m["jd"],
             "subject": m.get("subject", ""),
@@ -81,6 +87,8 @@ def main():
     handover = {
         "schema": SCHEMA,
         "from": {"name": args.name, "dept": args.dept, "role": args.role},
+        "tool_version": (final.get("tool") or ""),
+        "source_total": len(final.get("items", [])),
         "to": args.to,
         "generated_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "items": items,

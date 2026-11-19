@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""生成两份给人看的文件（不含哈希、置信度等技术字段）：
+"""生成两份给人看的文件——每份都带哈希，抬头带姓名/部门/职位：
 
-1. 目录索引.md   —— 按抽屉分组，一行一份：新文件名 —— 一句话内容
-2. 改名对照.md   —— 两列表格：原文件名 → 新文件名
+1. 目录索引.md   —— 按抽屉分组，一行一份：新文件名 —— 内容，下挂 sha256 前 12 位与大小
+2. 改名对照.md   —— 原文件名 → 新文件名 → 哈希（前 12 位）→ 大小
 
-给智能体看的完整字段仍在 17-终稿索引包.json，不要混用。
+完整 64 位 sha256 在 16-改名映射.csv/.json 与 17-终稿索引包.json。
 """
 import argparse
 import json
@@ -80,17 +80,26 @@ def main():
     for x in keep:
         groups.setdefault(x["jd"], []).append(x)
 
-    who = " · ".join(filter(None, [args.name, args.dept]))
+    owner = pkg.get("owner") or {}
+    name = args.name or owner.get("name", "")
+    dept = args.dept or owner.get("dept", "")
+    role = {"E": "员工", "M": "部门经理", "G": "总经理"}.get(owner.get("role", ""), "")
+    gen = (pkg.get("generated_at") or "")[:10].replace("-", ".")
+    tool = pkg.get("tool", "")
+    who = " · ".join(filter(None, [name, dept, role]))
+
     lines = ["# 目录索引", ""]
-    if who:
-        lines.append(f"{who}")
+    meta = [x for x in (who, f"生成 {gen}" if gen else "", tool) if x]
+    if meta:
+        lines.append("　".join(meta))
         lines.append("")
     lines += [
         f"共 {len(items)} 份文件：建议入库 **{len(keep)}** 份，"
         f"另有 {len(skip)} 份不入库（中间产物/系统导出/测试件）"
         + (f"，{len(sens)} 份敏感件不出现在目录里" if sens else "") + "。",
         "",
-        "> 每行一份：**新文件名** —— 大概是什么内容。括注里的原名只作对照。",
+        "> 每行一份：**新文件名** —— 大概是什么内容；下面一行是文件指纹。",
+        "> 哈希为 sha256 前 12 位，完整 64 位见 `16-改名映射.csv` 或 `17-终稿索引包.json`。",
         "",
     ]
 
@@ -107,6 +116,11 @@ def main():
                 b = (x.get("subject") or "").strip()
             tail = f" —— {b}" if b else ""
             lines.append(f"- **{new_name}**{tail}")
+            sha = (x.get("sha256") or "")[:12]
+            size = x.get("size") or ""
+            print_line = "　".join(filter(None, [f"`{sha}`" if sha else "", size]))
+            if print_line:
+                lines.append(f"  {print_line}")
         lines.append("")
 
     if skip:
@@ -117,17 +131,22 @@ def main():
 
     open(os.path.join(OUT, "目录索引.md"), "w", encoding="utf-8").write("\n".join(lines))
 
-    rows = ["# 改名对照", "",
+    rows = ["# 改名对照", ""]
+    meta = [x for x in (who, f"生成 {gen}" if gen else "", tool) if x]
+    if meta:
+        rows.append("　".join(meta))
+        rows.append("")
+    rows += [
             f"共 {len(items)} 份：改名 {sum(1 for x in items if x.get('action') == 'rename')}，"
             f"保留原名 {sum(1 for x in items if x.get('action') == 'keep_name')}，"
-            f"不入库 {len(skip)}。", "",
-            "| 原文件名 | 新文件名 |", "|---|---|"]
+            f"不入库 {len(skip)}。哈希为 sha256 前 12 位。", "",
+            "| 原文件名 | 新文件名 | 哈希(前12) | 大小 |", "|---|---|---|---|"]
     for x in sorted(items, key=lambda x: (x["jd"], os.path.basename(x.get("to", "")))):
         if x.get("action") not in ("rename", "keep_name"):
             continue
         old = os.path.basename(x.get("from", ""))
         new = os.path.basename(x.get("to", ""))
-        rows.append(f"| {old} | {new} |")
+        rows.append(f"| {old} | {new} | {(x.get('sha256') or '')[:12]} | {x.get('size') or ''} |")
     open(os.path.join(OUT, "改名对照.md"), "w", encoding="utf-8").write("\n".join(rows))
 
     print(json.dumps({"目录索引": len(keep), "改名对照": len(keep), "未入库": len(skip),
