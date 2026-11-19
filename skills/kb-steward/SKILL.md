@@ -1,13 +1,13 @@
 ---
 name: install-kb-steward
-description: "安装、更新、初始化「知识库管家」智能体。当用户说装知识库管家、安装 kb-steward、知识库整理怎么用、更新知识库管家、扫我的盘、帮我把电脑文件入库时使用。"
+description: "安装、更新、初始化「知识库管家」智能体。当用户说装知识库管家、安装 kb-steward、知识库整理怎么用、更新知识库管家、帮我检查电脑目录文件、帮我把文件入库时使用。"
 ---
 
 # 知识库管家 · 安装入口
 
 ## 一句话
 
-用户说「帮我装知识库管家」，本技能把 GitHub 上的运行时装到本机，注册成智能体；之后它就能扫盘、分拣、分类、出索引包。
+用户说「帮我装知识库管家」，本技能把 GitHub 上的运行时装到本机，注册成智能体；之后它就能检查你指定的目录、分拣、分类、出索引包（全程只读）。
 
 ## 安装（幂等，重复运行不出错）
 
@@ -16,7 +16,7 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 **第一步：下载引导器并校验**
 
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.3.9/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == '57f1955b19a3a1ac943cb6e466603465e9b688dc3e74306d4b2c0b3fcb37be0a',f'校验失败: {h}';p.write_bytes(d);print(p)"
+python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.3.10/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == 'c204f1e2233283160bc4f43fc6ba2f447789fb30038e39682bb53d2d4cb5fb0e',f'校验失败: {h}';p.write_bytes(d);print(p)"
 ```
 
 **第二步：运行**
@@ -37,7 +37,7 @@ cat "<工作区>/.spaceagents/plugins/kb-steward/current.json"
 
 1. **新建会话**，智能体下拉选「知识库管家」。
 2. 第一句说：「我叫 XXX，XX 部门，职位是 XXX」。
-3. 再说：「扫我的盘，出第一层」。
+3. 再说：「帮我检查我的电脑目录文件，出第一层」。
 
 它会先出清单和报告，**不改任何文件**。
 
