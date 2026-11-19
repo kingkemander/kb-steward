@@ -26,6 +26,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import sys
 import zipfile
 
@@ -155,12 +156,32 @@ def main():
                               "keep": x["_from"], "other": "",
                               "action": "打开确认主体/日期"})
 
-    # 3) 部门目录
+    # 3) 部门目录（每个文件夹带一句概括，融合/签核时用来判断里面是什么）
     tree = collections.defaultdict(list)
+    folder_members = collections.defaultdict(list)
     for x in merged:
         if x["action"] == "no_ingest":
             continue
-        tree[f'{x["jd"]} {LABEL.get(x["jd"], "未分类")}'].append(os.path.basename(x["suggested_name"]))
+        folder = f'{x["jd"]} {LABEL.get(x["jd"], "未分类")}'
+        tree[folder].append(os.path.basename(x["suggested_name"]))
+        folder_members[folder].append(x)
+
+    def folder_meta(members):
+        n = len(members)
+        if not n:
+            return {"count": 0, "summary": ""}
+        subj = collections.Counter((m.get("subject") or "通用") for m in members)
+        s_str = "、".join(f"{k} {v}" for k, v in subj.most_common(3))
+        dates = [str(m.get("date") or "") for m in members
+                 if re.fullmatch(r"\d{4}(-\d{2})?(-\d{2})?", str(m.get("date") or ""))]
+        dr = f"{min(dates)} ~ {max(dates)}" if dates else "日期待补"
+        who = collections.Counter(m.get("_from") or m.get("owner_name") or "?" for m in members)
+        w_str = "、".join(f"{k} {v}" for k, v in who.most_common(3))
+        return {"count": n, "subjects": [k for k, _ in subj.most_common(3)],
+                "date_range": dr, "members": dict(who),
+                "summary": f"{n} 份 · {s_str} · {dr} · 来自 {w_str}"}
+
+    folders_meta = {f: folder_meta(v) for f, v in folder_members.items()}
 
     dept_pkg = {
         "schema": "kb-steward/dept-catalog@1.0",
@@ -185,6 +206,7 @@ def main():
             "dup_count": x.get("_dup_count", 1),
             "domain": domain_of(x["jd"]),
         } for x in merged],
+        "folders": folders_meta,
         "errors": errors,
     }
     json.dump(dept_pkg, open(os.path.join(OUT, "20-部门融合包.json"), "w", encoding="utf-8"),
@@ -198,6 +220,9 @@ def main():
              "## 部门目录", "", "```"]
     for folder in sorted(tree):
         lines.append(f"{folder}/")
+        meta = folders_meta.get(folder) or {}
+        if meta.get("summary"):
+            lines.append(f"    └─ {meta['summary']}")
         for n in sorted(tree[folder]):
             lines.append(f"    {n}")
     lines += ["```", "", "## 权限域建议", "", "| 类目 | 域 | 份数 |", "|---|---|---:|"]

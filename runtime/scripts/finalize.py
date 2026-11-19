@@ -35,6 +35,27 @@ JD_LABEL = {
 }
 
 
+def folder_meta(items):
+    """每个抽屉的一句话概括：份数 · 主体分布 · 日期范围 · 格式分布。
+
+    融合时用它判断「这个文件夹到底是什么」，比只看目录名可靠。
+    """
+    n = len(items)
+    if not n:
+        return {"count": 0, "summary": "", "subjects": [], "date_range": "", "exts": {}}
+    subj = collections.Counter((i.get("subject") or "通用") for i in items)
+    top = subj.most_common(3)
+    s_str = "、".join(f"{k} {v}" for k, v in top)
+    dates = [str(i.get("date") or "") for i in items
+             if re.fullmatch(r"\d{4}(-\d{2})?(-\d{2})?", str(i.get("date") or ""))]
+    dr = f"{min(dates)} ~ {max(dates)}" if dates else "日期待补"
+    exts = collections.Counter(os.path.splitext(i.get("to") or "")[1].lstrip(".").upper()
+                               for i in items if os.path.splitext(i.get("to") or "")[1])
+    e_str = "、".join(f"{k}×{v}" for k, v in exts.most_common(3))
+    return {"count": n, "subjects": [k for k, _ in top], "date_range": dr,
+            "exts": dict(exts), "summary": f"{n} 份 · {s_str} · {dr} · {e_str}"}
+
+
 # 文件名强规则：文件名本身足够明确时，覆盖 AI 判定的抽屉。
 # 顺序即优先级。返回 (jd, action, 理由, 名称前缀)；jd 为 None 表示不入库。
 NAME_RULES = [
@@ -259,6 +280,12 @@ def main():
             tree[folder].append(name)
 
     # 目录树
+    folders_meta = {}
+    for folder, names in tree.items():
+        members = [m for m in mapping
+                   if m["to"].split("/", 1)[0] == folder and m["action"] in ("rename", "keep_name")]
+        folders_meta[folder] = folder_meta(members)
+
     lines = ["# 最终目录树与改名映射（dry-run）", "",
              f"文件数：{len(mapping)} ｜ 入库抽屉：{len(tree)} ｜ 改名：{sum(1 for m in mapping if m['action']=='rename')}"
              f" ｜ 保持原名：{sum(1 for m in mapping if m['action']=='keep_name')}"
@@ -268,6 +295,9 @@ def main():
              "", "## 入库目录树", "", "```"]
     for folder in sorted(tree):
         lines.append(f"{folder}/")
+        meta = folders_meta.get(folder) or {}
+        if meta.get("summary"):
+            lines.append(f"    └─ {meta['summary']}")
         for n in sorted(tree[folder]):
             lines.append(f"    {n}")
     lines += ["```", "",
@@ -316,7 +346,8 @@ def main():
                            "hold_sensitive": sum(1 for m in mapping if m["action"] == "hold_sensitive"),
                            "folders": len(tree)},
                "items": mapping,
-               "folders": {k: len(v) for k, v in tree.items()}},
+               "folders": folders_meta,
+               "folders_count": {k: len(v) for k, v in tree.items()}},
               open(os.path.join(OUT, "17-终稿索引包.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=2)
 
