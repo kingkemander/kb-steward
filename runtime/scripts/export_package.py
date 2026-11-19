@@ -92,6 +92,7 @@ def main():
         "to": args.to,
         "generated_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "items": items,
+        "folders": final.get("folders") or {},
         "counts": {
             "total": len(items),
             "rename": sum(1 for x in items if x["action"] == "rename"),

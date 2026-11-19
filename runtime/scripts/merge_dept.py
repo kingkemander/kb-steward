@@ -76,6 +76,7 @@ def main():
     ap.add_argument("--packages-dir", default="")
     ap.add_argument("--dept", default="")
     ap.add_argument("--manager", default="")
+    ap.add_argument("--no-ai", action="store_true", help="只用规则概括，不调模型")
     args = ap.parse_args()
 
     paths = list(args.packages)
@@ -183,6 +184,25 @@ def main():
 
     folders_meta = {f: folder_meta(v) for f, v in folder_members.items()}
 
+    # AI 一句话：融合后的文件夹也必须有自然语言描述（上传前判断用）
+    if not args.no_ai and os.environ.get("SPACEAGENTS_AUTO_API_KEY"):
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import folder_summary as fs
+            for folder, meta in folders_meta.items():
+                files = tree.get(folder, [])[:10]
+                prompt = fs.PROMPT.format(
+                    name=folder, count=meta["count"],
+                    subjects="、".join(meta.get("subjects") or []) or "无",
+                    date_range=meta.get("date_range") or "未知",
+                    exts="未知",
+                    files="\n".join(files) or "（无）")
+                meta["ai_summary"] = fs.call_llm(prompt)
+        except Exception:
+            pass
+    for folder, meta in folders_meta.items():
+        meta.setdefault("ai_summary", "")
+
     dept_pkg = {
         "schema": "kb-steward/dept-catalog@1.0",
         "dept": args.dept or (packages[0][0].get("from", {}).get("dept", "") if packages else ""),
@@ -221,8 +241,10 @@ def main():
     for folder in sorted(tree):
         lines.append(f"{folder}/")
         meta = folders_meta.get(folder) or {}
+        if meta.get("ai_summary"):
+            lines.append(f"    └─ {meta['ai_summary']}")
         if meta.get("summary"):
-            lines.append(f"    └─ {meta['summary']}")
+            lines.append(f"       {meta['summary']}")
         for n in sorted(tree[folder]):
             lines.append(f"    {n}")
     lines += ["```", "", "## 权限域建议", "", "| 类目 | 域 | 份数 |", "|---|---|---:|"]

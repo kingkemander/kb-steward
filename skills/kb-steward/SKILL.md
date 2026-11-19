@@ -16,7 +16,7 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 **第一步：下载引导器并校验**
 
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.4.5/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == 'f410ea23df50a863d457b8bcb675a801455edf654ef52491a0645d3313139149',f'校验失败: {h}';p.write_bytes(d);print(p)"
+python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.4.6/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == '78d18e0015824c0fc2372f3f410ffa1f951c507d668b9d50803227ee95a99b6b',f'校验失败: {h}';p.write_bytes(d);print(p)"
 ```
 
 **第二步：运行**
@@ -36,7 +36,7 @@ cat "<工作区>/.spaceagents/plugins/kb-steward/current.json"
 ## 这套技能的硬规则（所有人一致，不因人和部门而变）
 
 1. **所有索引必须带哈希和身份信息**：每份文件带完整 `sha256`（64 位）与大小；每份索引抬头带姓名/部门/职位/生成时间和工具版本。
-2. **目录树每个文件夹必须带一句概括**：`N 份 · 主体分布 · 日期范围 · 格式分布`，融合和签核时用它判断"这个文件夹里到底是什么"，不能只给目录名。
+2. **目录树每个文件夹必须带两句概括**：一句 AI 自然语言（"这是什么材料、涉及谁/什么项目"，≤40 字）+ 一行规则数据（N 份 · 主体分布 · 日期范围 · 格式分布）。**所有要上传的产物**（终稿索引包、上报包、部门融合包、目录树）都必须有这句 AI 描述。
 3. **抽不到正文不放弃，一次跑完**：有文字层直接读 → 扫描版 PDF 自动 OCR → 仍不行则把文件名/目录/同目录邻居/碎片交给模型判断，强制给置信度，证据不足留空不猜。
 4. **只读，复制不移动**：不改名、不移动、不删除、不上传原件；S 级敏感件只出清单。
 5. **日期不许造**：只有年份就写年份，不许补成 `01-01`；`20250702` 这类紧凑写法要认。

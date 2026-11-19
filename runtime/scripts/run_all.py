@@ -129,7 +129,7 @@ def main():
         return 2
 
     # [0] 体检
-    print("=== [0/9] 环境体检", flush=True)
+    print("=== [0/10] 环境体检", flush=True)
     rep = doctor(args.deps)
     if rep:
         miss = rep.get("missing") or []
@@ -149,33 +149,34 @@ def main():
     for s in scopes:
         scope_args += ["--root", s]
 
-    run("[1/9] 检查目录", [script("scan_l1.py")] + scope_args
+    run("[1/10] 检查目录", [script("scan_l1.py")] + scope_args
         + ["--out", OUT, "--max-files", str(args.max_files)])
-    run("[2/9] 报告与去重", [script("make_report.py"), "--out", OUT, "--root", scopes[0],
+    run("[2/10] 报告与去重", [script("make_report.py"), "--out", OUT, "--root", scopes[0],
                           "--name", args.name, "--dept", args.dept])
-    run("[3/9] 分类", [script("classify_l2.py"), "--out", OUT, "--root", scopes[0],
+    run("[3/10] 分类", [script("classify_l2.py"), "--out", OUT, "--root", scopes[0],
                      "--name", args.name, "--dept", args.dept])
-    run("[4/9] 批量补待补", [script("fill_gaps.py"), "--out", OUT])
-    run("[5/9] 全文解析", [script("parse_all.py"), "--out", OUT] + scope_args
+    run("[4/10] 批量补待补", [script("fill_gaps.py"), "--out", OUT])
+    run("[5/10] 全文解析", [script("parse_all.py"), "--out", OUT] + scope_args
         + (["--deps", args.deps] if args.deps else []))
 
     key = os.environ.get("SPACEAGENTS_AUTO_API_KEY", "")
     if args.skip_ai or not key:
-        print("\n[6/9] 跳过 AI 补齐" + ("（--skip-ai）" if args.skip_ai else "（未配置 SPACEAGENTS_AUTO_API_KEY）"))
-        print("[7/9] 跳过合并（无 AI 结果）")
+        print("\n[6/10] 跳过 AI 补齐" + ("（--skip-ai）" if args.skip_ai else "（未配置 SPACEAGENTS_AUTO_API_KEY）"))
+        print("[7/10] 跳过合并（无 AI 结果）")
         if not os.path.isfile(os.path.join(OUT, "个人索引包-L3.json")):
             print("\n没有 AI 结果，后续定目录会退回规则结果。")
     else:
-        run("[6/9] AI 补齐主体与日期", [script("ai_fill.py"), "--out", OUT], allow_fail=True)
+        run("[6/10] AI 补齐主体与日期", [script("ai_fill.py"), "--out", OUT], allow_fail=True)
         # 每次都重跑合并：上游分类/抽取变了，旧 L3 会和新结果打架
-        run("[7/9] 合并 AI 结果", [script("merge_ai.py"), "--out", OUT], allow_fail=True)
+        run("[7/10] 合并 AI 结果", [script("merge_ai.py"), "--out", OUT], allow_fail=True)
 
-    run("[8/9] 定目录与改名映射", [script("finalize.py"), "--out", OUT,
+    run("[8/10] 定目录与改名映射", [script("finalize.py"), "--out", OUT,
                               "--root", scopes[0], "--keep-orig",
                               "--name", args.name, "--dept", args.dept,
                               "--role", getattr(args, "role", "") or ""])
-    run("[9/9] 生成人读索引", [script("make_human_index.py"), "--out", OUT,
-                           "--name", args.name, "--dept", args.dept])
+    run("[9/10] 文件夹一句话概括", [script("folder_summary.py"), "--out", OUT], allow_fail=True)
+    run("[10/10] 生成人读索引", [script("make_human_index.py"), "--out", OUT,
+                             "--name", args.name, "--dept", args.dept])
 
     print("\n全部完成。产出目录：" + OUT)
     print("  给人看：目录索引.md、改名对照.md")
