@@ -93,12 +93,24 @@ python3 bootstrap.py --workspace "<工作区>"
 python3 bootstrap.py --workspace "<工作区>" --package ./runtime-v1.3.7.zip
 ```
 
+## 换到 GitLab 或镜像站
+
+仓库里已提交 `runtime-v*.zip`，不依赖 GitHub Release 附件。
+
+```bash
+export KB_STEWARD_DIST_URL="https://gitlab.com/<组>/kb-steward/-/raw/{version}/{asset}"
+python3 bootstrap.py --workspace "<工作区>"
+```
+
+占位符：`{version}` = `v1.3.9`，`{asset}` = `runtime-v1.3.9.zip`。SHA-256 校验照常执行，镜像内容必须与仓库一致。
+
 ## 环境变量
 
 | 变量 | 用途 | 必需 |
 |---|---|---|
 | `SPACEAGENTS_AUTO_API_KEY` | 第 6 步 AI 补齐 | 到第 6 步才需要 |
 | `SPACEAGENTS_AUTO_API_URL` | 覆盖接口地址（换通道/代理） | 否 |
+| `KB_STEWARD_DIST_URL` | 自定义分发地址（GitLab / 镜像） | 否 |
 
 密钥只从环境变量读，不写进任何文件、不进日志。
 

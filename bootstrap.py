@@ -21,8 +21,8 @@ import zipfile
 
 # ============ 需要修改 ============
 REPO = "kingkemander/kb-steward"                 # GitHub 仓库 owner/repo
-VERSION = "v1.3.8"
-ASSET = "runtime-v1.3.8.zip"
+VERSION = "v1.3.9"
+ASSET = "runtime-v1.3.9.zip"
 SHA256 = "62a4990fc30a1a6d5688227378886c91db250c38ba14c97d160e53f718f045cc"                          # Release zip 的 SHA-256，打包后回填
 PLUGIN_ID = "kb-steward"                 # 落点：.spaceagents/plugins/<PLUGIN_ID>
 AGENT_NAME = "知识库管家"
@@ -30,7 +30,18 @@ AGENT_NAME = "知识库管家"
 
 
 def fetch_asset(browser_url, token):
-    """有 Token 时走 API（私有仓库可用）；无 Token 走公开下载地址。"""
+    """下载顺序：自定义分发地址 → GitHub API（有 Token）→ GitHub 公开地址。
+
+    KB_STEWARD_DIST_URL 可指向任意镜像，用 {version} / {asset} 占位：
+      https://gitlab.com/<组>/kb-steward/-/raw/{version}/{asset}
+    """
+    tmpl = os.environ.get("KB_STEWARD_DIST_URL", "")
+    if tmpl:
+        u = tmpl.format(version=VERSION, asset=ASSET)
+        return urllib.request.urlopen(
+            urllib.request.Request(u, headers={"User-Agent": "kb-steward-bootstrap"}),
+            timeout=180).read()
+
     if token:
         api = f"https://api.github.com/repos/{REPO}/releases/tags/{VERSION}"
         req = urllib.request.Request(api, headers={
