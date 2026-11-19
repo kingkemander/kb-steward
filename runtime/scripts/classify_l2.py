@@ -131,7 +131,15 @@ def extract(path, ext):
             doc = fitz.open(path)
             txt = "\n".join(doc[i].get_text() for i in range(min(3, doc.page_count)))
             doc.close()
-            return (txt, "ok") if txt.strip() else ("", "待OCR")
+            if txt.strip():
+                return txt, "ok"
+            try:
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                import parse_all
+                ocr = parse_all.ocr_pdf(path)
+            except Exception:
+                ocr = ""
+            return (ocr, "ok-ocr") if ocr else ("", "待OCR")
         if ext == ".csv":
             for enc in ("utf-8-sig", "gbk", "utf-8"):
                 try:

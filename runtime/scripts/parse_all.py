@@ -39,6 +39,67 @@ def _soffice_convert(path, pathlib_suffix=".txt"):
     return ""
 
 
+def ocr_pdf(path, pages=3, dpi=200):
+    """扫描版 PDF：渲染前几页交给 tesseract 中文识别。
+
+    有文字层就不走这里；走这里说明 PDF 是图片，OCR 比让模型猜准得多。
+    """
+    import shutil as _sh, subprocess as _sp, tempfile, os as _os
+    if not _sh.which("tesseract"):
+        return ""
+    try:
+        import fitz
+    except Exception:
+        return ""
+    tmp = tempfile.mkdtemp(prefix="ocr_")
+    texts = []
+    try:
+        doc = fitz.open(path)
+        n = min(doc.page_count, pages)
+        for i in range(n):
+            pix = doc[i].get_pixmap(dpi=dpi)
+            png = _os.path.join(tmp, f"p{i}.png")
+            pix.save(png)
+            r = _sp.run(["tesseract", png, "stdout", "-l", "chi_sim+eng"],
+                        capture_output=True, timeout=180)
+            t = r.stdout.decode("utf-8", "ignore").strip()
+            if t:
+                texts.append(t)
+        doc.close()
+    except Exception:
+        pass
+    finally:
+        import shutil as _sh2
+        _sh2.rmtree(tmp, ignore_errors=True)
+    txt = _ocr_clean("\n".join(texts))
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", txt))
+    # 有效行占比太低说明是图纸/CAD 字体，OCR 只会产出噪声，交给模型按线索判断更准
+    lines = [x for x in txt.split("\n") if len(x) >= 4]
+    good = [x for x in lines
+            if len(re.findall(r"[\u4e00-\u9fff0-9]", x)) / max(len(x), 1) >= 0.3]
+    ratio = len(good) / max(len(lines), 1) if lines else 0
+    if cjk < 30 or ratio < 0.35:
+        return ""
+    return txt
+
+
+def _ocr_clean(txt):
+    """丢掉 OCR 的纯字母噪声行（CAD 字体识别失败的典型产物）。"""
+    keep = []
+    for line in txt.split("\n"):
+        x = line.strip()
+        if len(x) < 4:
+            continue
+        cjk = len(re.findall(r"[\u4e00-\u9fff]", x))
+        digits = len(re.findall(r"[0-9]", x))
+        if cjk == 0 and digits < 3:
+            continue
+        if cjk / max(len(x), 1) < 0.15 and digits < 3:
+            continue
+        keep.append(x)
+    return "\n".join(keep)
+
+
 def extract_full(path, ext):
     try:
         if ext == ".docx":
@@ -81,9 +142,22 @@ def extract_full(path, ext):
             doc = fitz.open(path)
             n = min(doc.page_count, 1000)
             parts = [doc[i].get_text() for i in range(n)]
-            doc.close()
             txt = "\n".join(parts)
-            return (txt, "ok") if txt.strip() else ("", "待OCR")
+            if txt.strip():
+                doc.close()
+                return txt, "ok"
+            # 无图片 + 无文字 = 矢量图纸（CAD 导出），OCR 只会出噪声，交模型按线索判断
+            try:
+                p0 = doc[0]
+                imgs = len(p0.get_images(full=True))
+                draws = len(p0.get_drawings())
+            except Exception:
+                imgs, draws = 1, 0
+            doc.close()
+            if draws > 20000:
+                return "", "cad_no_text"
+            ocr = ocr_pdf(path)
+            return (ocr, "ok-ocr") if ocr else ("", "cad_no_text")
         if ext == ".csv":
             for enc in ("utf-8-sig", "gbk", "utf-8"):
                 try:
@@ -101,11 +175,11 @@ def extract_full(path, ext):
                     return r.stdout.decode("utf-8", "ignore"), "ok"
             try:
                 import parse_legacy
-                t, st2, _q = parse_legacy.extract(path)
+                t, st2, _q = parse_legacy.extract_deep(path)
             except Exception:
                 t, st2 = "", "legacy_unreadable"
-            if st2 == "legacy_text":
-                return t, "legacy_text"
+            if st2 in ("legacy_text", "legacy_partial"):
+                return t, st2
             return "", "legacy_unreadable"
         if ext == ".xls":
             import xlrd
@@ -122,11 +196,11 @@ def extract_full(path, ext):
         if ext == ".ppt":
             try:
                 import parse_legacy
-                t, st2, _q = parse_legacy.extract(path)
+                t, st2, _q = parse_legacy.extract_deep(path)
             except Exception:
                 t, st2 = "", "legacy_unreadable"
-            if st2 == "legacy_text":
-                return t, "legacy_text"
+            if st2 in ("legacy_text", "legacy_partial"):
+                return t, st2
             return "", "legacy_unreadable"
         if ext == ".dxf":
             txt = []

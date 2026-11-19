@@ -9,6 +9,7 @@
 - 只补不猜：AI 为空不动原值
 """
 import argparse
+import collections
 import json
 import os
 import re
@@ -51,6 +52,10 @@ def main():
     cache_path = os.path.join(OUT, "14-AI补齐缓存.json")
     cache = json.load(open(cache_path, encoding="utf-8")) if os.path.isfile(cache_path) else {}
 
+    dir_map = {}
+    for x in items:
+        dir_map.setdefault(os.path.dirname(x["source_path"]), []).append(x)
+
     changed = {"subject": 0, "date": 0, "jd": 0}
     for it in items:
         ai = cache.get(it["source_path"]) or {}
@@ -76,6 +81,24 @@ def main():
             it["ai_confidence"] = conf
             changed["jd"] += 1
 
+        # 邻居投票兜底：本份判不出（00.03 或低置信），但同目录多数已明确 → 采用多数
+        if it["jd_code"] == "00.03" and conf < 0.5:
+            sib = dir_map.get(os.path.dirname(it["source_path"]), [])
+            votes = collections.Counter(
+                x["jd_code"] for x in sib
+                if x is not it and x["jd_code"] != "00.03")
+            if votes:
+                top, n_top = votes.most_common(1)[0]
+                known = sum(votes.values())
+                if n_top >= 3 and n_top / max(known, 1) >= 0.7 and top[:2] != "00":
+                    it["jd_code"] = top
+                    it["category"] = f"{top} {LABEL[top]}"
+                    it["category_word"] = WORD[top]
+                    it["ai_confidence"] = round(n_top / max(known, 1), 2)
+                    it["jd_source"] = f"同目录多数 {n_top}/{known}"
+                    changed["jd"] += 1
+                    changed["dir_vote"] = changed.get("dir_vote", 0) + 1
+
         if it["jd_code"] == "00.03":
             it["suggested_name"] = ""
             continue
@@ -96,6 +119,7 @@ def main():
         "ai_changed_subject": changed["subject"],
         "ai_changed_date": changed["date"],
         "ai_changed_jd": changed["jd"],
+        "dir_vote": changed.get("dir_vote", 0),
         "no_subject_final": sum(1 for i in items if not i["subject"]),
         "named_final": sum(1 for i in items if i["suggested_name"]),
     })

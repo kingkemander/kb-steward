@@ -31,7 +31,7 @@ TOOLS = [
     ("textutil", "转换 .doc（免安装）", "macOS 系统自带"),
     ("antiword", "转换 .doc（可选）", "Windows/Linux；不装则走模型兜底"),
     ("soffice", "转换 .doc/.ppt（可选）", "LibreOffice；不装则走模型兜底"),
-    ("tesseract", "扫描件 OCR", "可选；不装则标「待OCR」"),
+    ("tesseract", "扫描件 OCR", "建议装；不装则扫描件走「无正文模式」按线索判断"),
 ]
 
 
@@ -132,7 +132,7 @@ def main():
     else:
         notes.append("旧格式 .doc/.ppt：抽取原文后交模型判断，不装 LibreOffice/antiword。")
     if not has_ocr:
-        notes.append("扫描件：不装 tesseract 会标「待OCR」，不影响其他格式。")
+        notes.append("扫描件：不装 tesseract 时 PDF 无文字层会走「无正文模式」（按文件名/目录推断），准确率低于 OCR。")
 
     report = {
         "platform": f"{platform.system()} {platform.release()}",

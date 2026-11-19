@@ -98,6 +98,41 @@ SEG_PROMPT = """从下面这段文件内容里**逐字抄**出四类信息，不
 {text}
 """
 
+CONTEXT_PROMPT = """你在给一份**读不出正文**的文件做归档判断。只能凭下面线索推断，不要编造。
+
+抽屉只能从下面选一个编号：
+{plan}
+
+线索：
+- 文件名：{name}
+- 所在目录：{path}
+- 大小：{size}
+- 同目录其他文件（最多 12 个）：{siblings}
+- 抽到的文字片段（可能为空或乱码）：
+{snippet}
+
+规则：
+1. jd 只能选上面清单里的编号；完全没把握就写 ""，confidence 给 0.3 以下。
+2. subject 只写线索里**明确出现**的机构名或项目名；没有写 ""，不许猜。
+3. date 只写线索里明确的年份/日期；没有写 ""，不许用今天。
+4. evidence 写你依据的线索（≤40 字），如"同目录全是投标文件"。
+5. 宁可低置信，也不要编。
+
+只输出一行 JSON：
+{{"jd":"","subject":"","subject_type":"","date":"","confidence":0.0,"evidence":""}}
+"""
+
+RETRY_PROMPT = """上一轮判断证据不足。请只根据文件名、目录、同目录文件这三类线索，再判断一次。
+
+文件：{name}
+目录：{path}
+同目录文件：{siblings}
+上一轮结果：{prev}
+
+要求：jd 必须是清单里的编号；若仍无法判断，jd 写 "00.03"、confidence 给 0.2，evidence 写"线索不足"。
+只输出一行 JSON：{{"jd":"","subject":"","subject_type":"","date":"","confidence":0.0,"evidence":""}}
+"""
+
 ORG_SUFFIX = ("有限公司", "有限责任公司", "股份有限公司", "设计院", "研究院", "大学",
               "学院", "集团", "事务所", "协会", "促进会")
 ORG_BAD = ["的", "了", "和", "与", "对", "为", "在", "是", "把", "被", "给", "向", "让", "从",
@@ -157,15 +192,39 @@ def split_text(text, limit=SEG_LIMIT, overlap=SEG_OVERLAP, max_segs=15):
     return segs
 
 
-def process_one(rec):
+def process_one(rec, siblings=None):
     text = rec.get("text", "")
     if rec.get("status") == "legacy_text":
         text = ("【说明】以下内容由旧格式文件（.doc/.ppt）直接抽取，可能含碎片或乱码。"
                 "只写能从片段中确认的字段；不确定就留空，不要猜。\n" + text)
     name, path = rec["file_name"], rec["source_path"]
-    if not text.strip():
-        return {"jd": "", "subject": "", "subject_type": "", "date": "",
-                "confidence": 0, "evidence": "", "mode": "empty"}
+    st = rec.get("status") or ""
+    no_text_status = st in ("legacy_unreadable", "legacy_partial", "待OCR", "待转换", "cad_no_text") \
+        or st.startswith("need_converter") or st.startswith("missing_dep")
+    if not text.strip() or no_text_status:
+        # 抽不到正文：直接交模型，用文件名/目录/邻居/碎片推断，避免反复重跑
+        sib = "；".join((siblings or [])[:12]) or "（无）"
+        snippet = (text or "")[:600] or "（无）"
+        prompt = CONTEXT_PROMPT.format(plan=PLAN_TEXT, name=name, path=path,
+                                       size=rec.get("size", ""), siblings=sib,
+                                       snippet=snippet)
+        out = call_llm(prompt, max_tokens=8000)
+        jd = out.get("jd", "") if out.get("jd") in JD_OK else ""
+        conf = out.get("confidence", 0.3)
+        mode = "context"
+        if not jd or float(conf or 0) < 0.6:
+            out2 = call_llm(RETRY_PROMPT.format(
+                name=name, path=path, siblings=sib,
+                prev=json.dumps(out, ensure_ascii=False)[:300]), max_tokens=8000)
+            if out2.get("jd") in JD_OK:
+                out, mode = out2, "context_retry"
+        return {"jd": jd if mode == "context" else (out.get("jd") if out.get("jd") in JD_OK else jd),
+                "subject": (out.get("subject") or "").strip(),
+                "subject_type": out.get("subject_type") or "",
+                "date": out.get("date", "") if re.fullmatch(r"\d{4}(-\d{2}-\d{2})?", out.get("date", "") or "") else "",
+                "confidence": out.get("confidence", 0.3),
+                "evidence": (out.get("evidence") or "")[:80],
+                "mode": mode}
 
     if len(text) <= SEG_LIMIT:
         out = call_llm(FULL_PROMPT.format(plan=PLAN_TEXT, name=name, path=path,
@@ -250,6 +309,22 @@ def main():
     if os.path.isfile(cache_path):
         cache = json.load(open(cache_path, encoding="utf-8"))
 
+    dir_map = {}
+    for r in recs:
+        d = os.path.dirname(r["source_path"])
+        dir_map.setdefault(d, []).append(r["file_name"])
+
+    # 之前靠线索猜的（无正文），现在 OCR/深抽拿到正文了 → 作废旧结果，重判
+    rec_map = {r["source_path"]: r for r in recs}
+    stale = [k for k, v in cache.items()
+             if (v.get("mode") in ("context", "context_retry")
+                 and len((rec_map.get(k) or {}).get("text", "")) > 100)
+             or v.get("mode") == "empty"]
+    for k in stale:
+        cache.pop(k, None)
+    if stale:
+        print(f"需要重判 {len(stale)} 条（正文已补全 / 上次没出结果）", flush=True)
+
     lock = threading.Lock()
     done = [0]
 
@@ -266,7 +341,9 @@ def main():
                                              "mode": "skipped"}
                 done[0] += 1
             return
-        res = process_one(rec)
+        sib = [x for x in dir_map.get(os.path.dirname(rec["source_path"]), [])
+               if x != rec["file_name"]]
+        res = process_one(rec, sib)
         with lock:
             cache[rec["source_path"]] = res
             done[0] += 1
@@ -287,7 +364,9 @@ def main():
             list(ex.map(work, missing))
         save()
 
+    modes = collections.Counter(v.get("mode") for v in cache.values())
     print(json.dumps({"total": len(recs), "covered": len(cache),
+                      "modes": dict(modes),
                       "missing": len([r for r in recs if r["source_path"] not in cache]),
                       "cache": cache_path}, ensure_ascii=False, indent=2))
 

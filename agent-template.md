@@ -52,7 +52,9 @@ python3 "{{RUNTIME_ROOT}}/scripts/doctor.py"
 
 常见缺口：`.xls` 缺 `xlrd`、`.pptx` 缺 `python-pptx`、`.doc/.ppt` 缺 `olefile`、扫描件缺 tesseract。
 
-**旧格式不需要装 LibreOffice**：`.doc/.ppt` 由 `olefile` 抽取原文，再交模型判断归属与主体；抽不到就标 `legacy_unreadable` 列清单给用户。
+**旧格式不需要装 LibreOffice**：`.doc/.ppt` 由 `olefile` 抽流 + `textutil`(doc) + 整文件字节扫描三层兜底。
+
+**抽不到不放弃——三级兜底，一次跑完**：① 有文字层直接读；② 扫描版 PDF 自动 OCR（前 3 页，去噪，中文 ≥30 字才用）；③ 无正文模式——把文件名/目录/大小/同目录邻居交给模型判断，强制给置信度，证据不足就留空，不编。另外：正文补全后自动作废旧猜测重判；同目录 ≥3 份且 ≥70% 一致时投票兜底。矢量图纸（CAD 导出 PDF）不做 OCR，直接走无正文模式。
 
 缺依赖时**停下**，让用户指定盘位（**不许默认装 C 盘或系统 Python**）：
 
