@@ -9,10 +9,34 @@ import csv
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 MAX_CHARS = 300000
+
+
+def _soffice_convert(path, pathlib_suffix=".txt"):
+    """用 LibreOffice 把老格式转成 txt（找不到 soffice 就返回空）。"""
+    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    if not exe:
+        return ""
+    tmp = tempfile.mkdtemp(prefix="kbconv-")
+    try:
+        r = subprocess.run([exe, "--headless", "--convert-to", "txt:Text",
+                            "--outdir", tmp, path],
+                           capture_output=True, timeout=180)
+        if r.returncode != 0:
+            return ""
+        base = os.path.splitext(os.path.basename(path))[0] + pathlib_suffix
+        out = os.path.join(tmp, base)
+        if os.path.isfile(out):
+            with open(out, encoding="utf-8", errors="ignore") as f:
+                return f.read()
+    except Exception:
+        return ""
+    return ""
 
 
 def extract_full(path, ext):
@@ -69,11 +93,21 @@ def extract_full(path, ext):
                     continue
             return "", "待转换"
         if ext == ".doc":
-            r = subprocess.run(["textutil", "-convert", "txt", "-stdout", path],
-                               capture_output=True, timeout=60)
-            if r.returncode == 0 and r.stdout.strip():
-                return r.stdout.decode("utf-8", "ignore"), "ok"
-            return "", "待转换"
+            # 免安装优先：macOS textutil → antiword → catdoc → LibreOffice
+            if shutil.which("textutil"):
+                r = subprocess.run(["textutil", "-convert", "txt", "-stdout", path],
+                                   capture_output=True, timeout=60)
+                if r.returncode == 0 and r.stdout.strip():
+                    return r.stdout.decode("utf-8", "ignore"), "ok"
+            for cmd in (["antiword", path], ["catdoc", path]):
+                if shutil.which(cmd[0]):
+                    r = subprocess.run(cmd, capture_output=True, timeout=60)
+                    if r.returncode == 0 and r.stdout.strip():
+                        return r.stdout.decode("utf-8", "ignore"), "ok"
+            converted = _soffice_convert(path, pathlib_suffix=".txt")
+            if converted:
+                return converted, "ok"
+            return "", "need_converter:doc"
         if ext == ".xls":
             import xlrd
             wb = xlrd.open_workbook(path)
@@ -86,6 +120,26 @@ def extract_full(path, ext):
                     if vals:
                         parts.append(" | ".join(vals))
             return "\n".join(parts), "ok"
+        if ext == ".ppt":
+            # 先试 olefile 直接抽文本（免安装）；不行再走 LibreOffice
+            try:
+                import olefile
+                if olefile.isOleFile(path):
+                    ole = olefile.OleFileIO(path)
+                    if ole.exists("PowerPoint Document"):
+                        raw = ole.openstream("PowerPoint Document").read()
+                        ole.close()
+                        t = raw.decode("utf-16-le", errors="ignore")
+                        seg = re.findall(r"[\u4e00-\u9fa5A-Za-z0-9，。；：、（）「」%\-\.\s]{6,}", t)
+                        txt = "\n".join(x.strip() for x in seg if len(x.strip()) >= 6)
+                        if len(txt) >= 40:
+                            return txt[:MAX_CHARS], "ok"
+            except Exception:
+                pass
+            converted = _soffice_convert(path, pathlib_suffix=".txt")
+            if converted:
+                return converted, "ok"
+            return "", "need_converter:ppt"
         if ext == ".dxf":
             txt = []
             with open(path, "r", errors="ignore") as f:

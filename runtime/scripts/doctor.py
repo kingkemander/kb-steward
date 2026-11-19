@@ -28,9 +28,11 @@ REQUIRED = [
 
 # (命令名, 用途, 说明)
 TOOLS = [
-    ("soffice", "转换 .doc / .xls / .ppt 老格式", "LibreOffice（Windows/Linux 必装）"),
+    ("textutil", "转换 .doc（免安装）", "macOS 系统自带"),
+    ("antiword", "转换 .doc（免安装，~1MB）", "Windows/Linux 可选"),
+    ("catdoc", "转换 .doc（免安装）", "catdoc 套件"),
+    ("soffice", "转换 .doc/.ppt（全能，~300MB）", "LibreOffice，可最后再装"),
     ("libreoffice", "转换老格式（Linux 别名）", "LibreOffice"),
-    ("textutil", "转换 .doc 老格式", "macOS 系统自带"),
     ("tesseract", "扫描件 OCR", "可选；不装则标「待OCR」"),
 ]
 
@@ -100,9 +102,11 @@ def main():
     tools = [{"cmd": c, "use": u, "note": n, "ok": has_cmd(c)} for c, u, n in TOOLS]
 
     missing_mods = [m for m in mods if not m["ok"]]
-    has_soffice = any(t["ok"] for t in tools if t["cmd"] in ("soffice", "libreoffice"))
-    has_textutil = any(t["ok"] for t in tools if t["cmd"] == "textutil")
-    has_ocr = any(t["ok"] for t in tools if t["cmd"] == "tesseract")
+    ok = {t["cmd"]: t["ok"] for t in tools}
+    has_soffice = ok.get("soffice") or ok.get("libreoffice")
+    has_doc_reader = ok.get("textutil") or ok.get("antiword") or ok.get("catdoc") or has_soffice
+    has_ppt_reader = has_module("olefile") or has_soffice
+    has_ocr = ok.get("tesseract")
 
     can = []
     if all(m["ok"] for m in mods):
@@ -111,10 +115,29 @@ def main():
         ok_ext = [m["use"].split()[0] for m in mods if m["ok"]]
         if ok_ext:
             can.append("可解析：" + "、".join(ok_ext))
-    if has_soffice or has_textutil:
-        can.append(".doc/.xls/.ppt 老格式可转换后解析")
+    if has_module("xlrd"):
+        can.append(".xls 直读（无需转换）")
+    if has_doc_reader:
+        can.append(".doc 可转换后解析")
+    if has_ppt_reader:
+        can.append(".ppt 可抽文本" + ("（olefile）" if has_module("olefile") else "（LibreOffice）"))
     if has_ocr:
         can.append("扫描件可 OCR")
+
+    notes = []
+    if not has_module("xlrd"):
+        notes.append(".xls：装 xlrd（约 1 MB）即可直读，不需要装 LibreOffice。")
+    if not has_doc_reader:
+        if platform.system() == "Darwin":
+            notes.append(".doc：macOS 自带 textutil，本机没有，检查系统版本。")
+        else:
+            notes.append(".doc：装 antiword（约 1–2 MB）即可读文本；需要保表格/样式再考虑 LibreOffice。")
+    elif not has_soffice and not ok.get("textutil"):
+        notes.append(".doc：用 antiword 读文本，表格样式会有损失。")
+    if not has_module("olefile") and not has_soffice:
+        notes.append(".ppt：装 olefile（约 200 KB）可先抽文本；复杂版式需 LibreOffice。")
+    if not has_ocr:
+        notes.append("扫描件：不装 tesseract 会标「待OCR」，不影响其他格式。")
 
     report = {
         "platform": f"{platform.system()} {platform.release()}",
@@ -126,7 +149,14 @@ def main():
         "volumes": volumes(),
         "can_parse": can,
         "missing": [m["pip"] for m in missing_mods],
-        "need_old_format_converter": not (has_soffice or has_textutil),
+        "need_old_format_converter": not has_doc_reader,
+        "doc_reader": ("textutil" if ok.get("textutil") else
+                       "antiword" if ok.get("antiword") else
+                       "catdoc" if ok.get("catdoc") else
+                       "libreoffice" if has_soffice else ""),
+        "ppt_reader": ("olefile" if has_module("olefile") else
+                       "libreoffice" if has_soffice else ""),
+        "notes": notes,
         "ocr": has_ocr,
     }
 

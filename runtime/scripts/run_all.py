@@ -136,8 +136,8 @@ def main():
         print("可解析：" + ("；".join(rep.get("can_parse") or []) or "无"))
         if miss:
             print("缺少解析库：" + "、".join(miss))
-        if rep.get("need_old_format_converter"):
-            print("缺少老格式转换工具（.doc/.xls/.ppt）：装 LibreOffice")
+        for n in (rep.get("notes") or []):
+            print("提示：" + n)
         if (miss or rep.get("need_old_format_converter")) and not args.allow_missing_deps:
             print("\n请先装依赖（必须指定盘位，不要装系统盘）：")
             print('  python3 ' + script("install_deps.py") + ' --target "<盘位>/kb-deps"')

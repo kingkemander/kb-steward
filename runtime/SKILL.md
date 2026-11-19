@@ -546,7 +546,17 @@ python3 scripts/doctor.py                 # 本机缺什么
 python3 scripts/doctor.py --deps "<盘位>/kb-deps"   # 已装到自定义目录时
 ```
 
-检查三类：解析库（python-docx / openpyxl / xlrd / python-pptx / pymupdf）、外部工具（soffice 或 textutil、tesseract）、可用盘位与剩余空间。
+检查三类：解析库（python-docx / openpyxl / xlrd / python-pptx / pymupdf / olefile）、外部工具（textutil / antiword / catdoc / soffice、tesseract）、可用盘位与剩余空间。
+
+**老格式不等于必须装 LibreOffice**：
+
+| 格式 | 最小依赖 | 说明 |
+|---|---|---|
+| `.xls` | `xlrd`（1 MB） | 直读，不转换 |
+| `.doc` | macOS `textutil`（自带）／Windows `antiword`（1–2 MB） | 只读文本；要保表格样式才需要 LibreOffice |
+| `.ppt` | `olefile`（200 KB） | 抽取文本；复杂版式才需要 LibreOffice |
+
+`doctor.py` 会输出 `doc_reader` / `ppt_reader` 实际用了哪个，以及 `notes`（按平台给最小依赖建议）。
 
 输出 `missing`（缺哪些 pip 包）、`need_old_format_converter`（.doc/.xls/.ppt 需 LibreOffice）、`volumes`（可选盘位）。
 

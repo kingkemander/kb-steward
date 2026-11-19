@@ -67,7 +67,15 @@ python3 runtime/scripts/doctor.py                                  # 看缺什�
 python3 runtime/scripts/install_deps.py --target "<盘位>/kb-deps"  # 装到指定盘
 ```
 
-`.xls` 需 `xlrd`，`.pptx` 需 `python-pptx`，`.doc/.xls/.ppt` 老格式需 LibreOffice（Windows 无 textutil），扫描件需 tesseract。**不默认装系统盘**。
+| 格式 | 最小依赖 | 是否需 LibreOffice |
+|---|---|---|
+| `.docx` / `.xlsx` / `.pptx` / `.pdf` | python-docx / openpyxl / python-pptx / pymupdf | 否 |
+| `.xls` | `xlrd`（1 MB） | **否**，直读 |
+| `.doc` | macOS `textutil`（自带）／Windows `antiword`（1–2 MB） | 一般不需要 |
+| `.ppt` | `olefile`（200 KB） | 一般不需要 |
+| 扫描件 | `tesseract` | — |
+
+**不默认装系统盘**。
 
 ## 两层交接
 

@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 
-DEFAULT_PKGS = ["xlrd", "python-pptx"]
+DEFAULT_PKGS = ["xlrd", "python-pptx", "olefile"]
 ALL_PKGS = ["python-docx", "openpyxl", "xlrd", "python-pptx", "pymupdf"]
 # 约 30 MB，留 200 MB 余量
 NEED_FREE_MB = 200

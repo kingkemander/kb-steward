@@ -132,8 +132,8 @@ rm -f  "<工作区>/.opencode/agents/知识库管家.md"
 | 依赖 | 说明 |
 |---|---|
 | Python ≥ 3.9 | 主程序只用标准库 |
-| 解析库 | `xlrd`（.xls）、`python-pptx`（.pptx）、`python-docx`、`openpyxl`、`pymupdf`（.pdf） |
-| LibreOffice | 转换老式 `.doc/.xls/.ppt`（Windows 无 textutil） |
+| 解析库 | `xlrd`（.xls 直读）、`python-pptx`、`python-docx`、`openpyxl`、`pymupdf`、`olefile`（.ppt 抽文本） |
+| 老格式 | `.doc`：macOS 自带 textutil／Windows antiword；`.ppt`：olefile。**不必装 LibreOffice** |
 | tesseract | 扫描件 OCR，可选；不装则标「待OCR」 |
 | `SPACEAGENTS_AUTO_API_KEY` | 仅 AI 补齐需要 |
 
