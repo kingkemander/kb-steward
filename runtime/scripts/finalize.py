@@ -73,14 +73,15 @@ def check_name(name):
     if not name:
         return False, ["空名"]
     stem, ext = os.path.splitext(name)
-    parts = stem.split("_")
+    core = re.sub(r"（原：[^）]*）", "", stem)   # 括注里的原名不参与分段校验
+    parts = core.split("_")
     if len(parts) != 4:
         reasons.append(f"段数={len(parts)}")
     if any("_" in p for p in parts):
         reasons.append("段内下划线")
     if re.search(r"\.(docx?|pdf|pptx?|xlsx?|csv|dwg|dxf)$", stem, re.I):
         reasons.append("名称段残留扩展名")
-    if len(name) > 100:
+    if len(name) > 150:
         reasons.append(f"超长{len(name)}")
     if re.search(r"【(重复|待OCR|待核|副本|最终|新建|作废|旧)】", name):
         reasons.append("状态标记进名字")
@@ -96,6 +97,10 @@ def main():
     ap.add_argument("--root", default=os.path.expanduser("~"))
     ap.add_argument("--dest", default="", help="apply 时的目标根目录")
     ap.add_argument("--apply", action="store_true", help="真正复制文件（默认只出映射）")
+    ap.add_argument("--keep-orig", dest="keep_orig", action="store_true", default=True,
+                    help="新文件名末尾括注原文件名（默认开）")
+    ap.add_argument("--no-keep-orig", dest="keep_orig", action="store_false",
+                    help="新文件名不带原文件名括注")
     args = ap.parse_args()
     OUT = os.path.abspath(args.out)
 
@@ -151,6 +156,13 @@ def main():
             if action == "rename":
                 action = "keep_name"
         else:
+            if args.keep_orig:
+                stem_o, ext_o = os.path.splitext(name)
+                orig = os.path.splitext(os.path.basename(it.get("source_path") or ""))[0]
+                orig = re.sub(r"[（）()]", "", orig).strip()
+                room = 150 - len(stem_o) - len(ext_o) - 5
+                if room >= 4 and orig and orig not in stem_o:
+                    name = f"{stem_o}（原：{orig[:room]}）{ext_o}"
             ok, reasons = check_name(name)
             if not ok:
                 action = "hold"

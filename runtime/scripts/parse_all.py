@@ -98,6 +98,8 @@ def extract_full(path, ext):
             return "\n".join(txt[:20000]), "ok" if txt else "cad_no_text"
         if ext == ".dwg":
             return "", "cad_no_text"
+    except ImportError as e:
+        return "", f"missing_dep:{getattr(e, 'name', '')}"
     except Exception as e:
         return "", f"err:{type(e).__name__}"
     return "", "skip"
@@ -106,8 +108,17 @@ def extract_full(path, ext):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--root", default=os.path.expanduser("~"))
+    ap.add_argument("--root", action="append", default=None,
+                    help="文件所在根目录，可重复；默认用户主目录")
+    ap.add_argument("--deps", default="", help="自定义依赖目录（install_deps.py 装到的地方）")
     args = ap.parse_args()
+
+    deps = args.deps or os.environ.get("KB_STEWARD_DEPS", "")
+    if deps and os.path.isdir(deps):
+        sys.path.insert(0, deps)
+        print(f"依赖目录：{deps}", flush=True)
+
+    roots = [os.path.abspath(r) for r in (args.root or [os.path.expanduser("~")])]
     OUT = os.path.abspath(args.out)
 
     rows = list(csv.DictReader(open(os.path.join(OUT, "09-分类结果.csv"), encoding="utf-8-sig")))
@@ -116,7 +127,21 @@ def main():
     done = 0
     with open(out_path, "w", encoding="utf-8") as f:
         for r in rows:
-            full = os.path.join(args.root, r["source_path"])
+            full = None
+            for rt in roots:
+                cand = os.path.join(rt, r["source_path"])
+                if os.path.isfile(cand):
+                    full = cand
+                    break
+                # 多范围扫描时相对路径带前缀，尝试去掉第一段
+                parts = r["source_path"].split("/", 1)
+                if len(parts) == 2:
+                    cand2 = os.path.join(rt, parts[1])
+                    if os.path.isfile(cand2):
+                        full = cand2
+                        break
+            if full is None:
+                full = os.path.join(roots[0], r["source_path"])
             ext = r["ext"].lower()
             text, st = extract_full(full, ext)
             text = text[:MAX_CHARS]
@@ -134,7 +159,10 @@ def main():
             done += 1
             if done % 50 == 0:
                 print(f"  {done}/{len(rows)}", flush=True)
-    print(json.dumps({"done": done, "stats": stats, "cache": out_path,
+    missing = sorted({k.split(":", 1)[1] for k in stats if k.startswith("missing_dep:")})
+    if missing:
+        print("缺少解析库：" + "、".join(missing) + "（先跑 doctor.py 体检，再按提示指定盘位安装）")
+    print(json.dumps({"done": done, "stats": stats, "missing_deps": missing, "cache": out_path,
                       "total_chars": sum(1 for _ in open(out_path, encoding='utf-8'))},
                      ensure_ascii=False, indent=2))
 

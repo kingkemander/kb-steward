@@ -124,12 +124,13 @@ def human_size(n):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True)
+    ap.add_argument("--root", required=True, action="append",
+                    help="要检查的目录/盘，可重复：--root ~/Desktop --root ~/Documents")
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-files", type=int, default=0, help="0=不限")
     args = ap.parse_args()
 
-    root = os.path.abspath(args.root)
+    roots = [os.path.abspath(r) for r in args.root]
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
 
@@ -139,68 +140,76 @@ def main():
     errors = []
     top_dirs = Counter()
     count = 0
+    multi = len(roots) > 1
+    stopped = False
 
-    stack = [root]
-    while stack:
-        cur = stack.pop()
-        try:
-            with os.scandir(cur) as it:
-                entries = list(it)
-        except PermissionError as e:
-            errors.append((cur, str(e)))
-            continue
-        except OSError as e:
-            errors.append((cur, str(e)))
-            continue
-
-        for e in entries:
+    for root in roots:
+        if stopped:
+            break
+        prefix = os.path.basename(root.rstrip(os.sep)) or "root"
+        stack = [root]
+        while stack:
+            cur = stack.pop()
             try:
-                is_dir = e.is_dir(follow_symlinks=False)
-            except OSError:
+                with os.scandir(cur) as it:
+                    entries = list(it)
+            except PermissionError as e:
+                errors.append((cur, str(e)))
                 continue
-            rel = os.path.relpath(e.path, root)
-            if is_dir:
-                base = e.name
-                # 顶层跳过系统/隐私目录
-                if os.sep not in rel and (base in SKIP_TOP or base.startswith(".Trash")):
-                    skipped_dirs.append(rel)
-                    continue
-                # 顶层点目录：AI 客户端/工具缓存（.openclaw/.qoder/.codex 等），非公司资产
-                if os.sep not in rel and base.startswith("."):
-                    skipped_dirs.append(rel + " (隐藏工具目录)")
-                    continue
-                # 开发/依赖目录：整目录跳过（只记一次）
-                low = e.path.lower() + os.sep
-                if is_under_dev(low):
-                    skipped_dirs.append(rel)
-                    continue
-                stack.append(e.path)
+            except OSError as e:
+                errors.append((cur, str(e)))
                 continue
 
-            try:
-                st = e.stat(follow_symlinks=False)
-            except OSError as ex:
-                errors.append((e.path, str(ex)))
-                continue
-            if not stat.S_ISREG(st.st_mode):
-                continue
+            for e in entries:
+                try:
+                    is_dir = e.is_dir(follow_symlinks=False)
+                except OSError:
+                    continue
+                rel0 = os.path.relpath(e.path, root)
+                rel = f"{prefix}/{rel0}" if multi else rel0
+                if is_dir:
+                    base = e.name
+                    # 顶层跳过系统/隐私目录
+                    if os.sep not in rel0 and (base in SKIP_TOP or base.startswith(".Trash")):
+                        skipped_dirs.append(rel)
+                        continue
+                    # 顶层点目录：AI 客户端/工具缓存，非公司资产
+                    if os.sep not in rel0 and base.startswith("."):
+                        skipped_dirs.append(rel + " (隐藏工具目录)")
+                        continue
+                    # 开发/依赖目录：整目录跳过（只记一次）
+                    low = e.path.lower() + os.sep
+                    if is_under_dev(low):
+                        skipped_dirs.append(rel)
+                        continue
+                    stack.append(e.path)
+                    continue
 
-            name = e.name
-            ext = os.path.splitext(name)[1].lower()
-            path = e.path
-            level, verdict, channel, reason = classify(path, name, st.st_size, ext)
-            depth = rel.count(os.sep)
-            top = rel.split(os.sep)[0] if os.sep in rel else "(root)"
-            top_dirs[top] += 1
+                try:
+                    st = e.stat(follow_symlinks=False)
+                except OSError as ex:
+                    errors.append((e.path, str(ex)))
+                    continue
+                if not stat.S_ISREG(st.st_mode):
+                    continue
 
-            rows.append([
-                rel, name, ext, st.st_size, human_size(st.st_size),
-                int(st.st_mtime), level, verdict, channel, reason, depth,
-            ])
-            count += 1
-            if args.max_files and count >= args.max_files:
-                stack.clear()
-                break
+                name = e.name
+                ext = os.path.splitext(name)[1].lower()
+                path = e.path
+                level, verdict, channel, reason = classify(path, name, st.st_size, ext)
+                depth = rel.count(os.sep)
+                top = rel.split(os.sep)[0] if os.sep in rel else "(root)"
+                top_dirs[top] += 1
+
+                rows.append([
+                    rel, name, ext, st.st_size, human_size(st.st_size),
+                    int(st.st_mtime), level, verdict, channel, reason, depth,
+                ])
+                count += 1
+                if args.max_files and count >= args.max_files:
+                    stack.clear()
+                    stopped = True
+                    break
 
     # 写全量清单
     all_csv = os.path.join(out, "01-全量文件清单.csv")
@@ -248,7 +257,8 @@ def main():
         size_by_verdict[r[7]] += r[3]
 
     summary = {
-        "root": root,
+        "roots": roots,
+        "root": roots[0] if len(roots) == 1 else f"{len(roots)} 个范围",
         "scanned_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "elapsed_sec": round(time.time() - t0, 1),
         "total_files": len(rows),

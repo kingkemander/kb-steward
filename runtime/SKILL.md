@@ -536,3 +536,58 @@ python3 scripts/merge_dept.py --out ./部门融合 --packages-dir ./收到的上
 | 80 项目 | 交付部 |
 
 父域覆盖子域；跨部门共享走「域授权」，不复制文件。
+
+## 15. 依赖体检与一键流程（v1.4）
+
+### 15.1 先体检，再动手
+
+```bash
+python3 scripts/doctor.py                 # 本机缺什么
+python3 scripts/doctor.py --deps "<盘位>/kb-deps"   # 已装到自定义目录时
+```
+
+检查三类：解析库（python-docx / openpyxl / xlrd / python-pptx / pymupdf）、外部工具（soffice 或 textutil、tesseract）、可用盘位与剩余空间。
+
+输出 `missing`（缺哪些 pip 包）、`need_old_format_converter`（.doc/.xls/.ppt 需 LibreOffice）、`volumes`（可选盘位）。
+
+### 15.2 装依赖：必须由用户指定盘位
+
+```bash
+python3 scripts/install_deps.py --target "<盘位>/kb-deps"          # 只装缺失的常用包
+python3 scripts/install_deps.py --target "<盘位>/kb-deps" --all     # 全部解析库
+```
+
+规矩：
+- **不许**装到系统盘、系统 Python、`site-packages`
+- 安装前检查剩余空间（<200 MB 直接拒绝）
+- 装完用 `--deps` 或环境变量 `KB_STEWARD_DEPS` 交给后续脚本
+- 网络失败时提示换镜像源，不静默重试
+
+### 15.3 一键跑完
+
+```bash
+python3 scripts/run_all.py --out ./kb-整理 --name "<姓名>" --dept "<部门>" --role "<职位>" \
+  --scope "<路径1>" --scope "<路径2>" --deps "<盘位>/kb-deps"
+```
+
+顺序：体检 → 检查目录 → 报告 → 分类 → 补待补 → 全文解析 → AI 补齐 → 合并 → 定目录 → 人读索引。
+缺依赖默认停在体检这一步；`--allow-missing-deps` 可先跑，缺库文件标 `missing_dep:<模块>`。
+
+范围选择：`run_all.py --list-roots` 列出盘位与常用目录（含剩余空间与顶层文件数），由用户勾选。
+
+### 15.4 三类产物（不要混）
+
+| 产物 | 读者 | 内容 | 禁止出现 |
+|---|---|---|---|
+| `目录索引.md` | 人 | 抽屉分组 + 一行一份 + 一句话内容 | 哈希、置信度、字段名 |
+| `改名对照.md` | 人 | 原名 → 新名 两列 | 同上 |
+| `17-终稿索引包.json` | 智能体/第二层 | 完整字段（抽屉/主体/日期/哈希/权限域） | — |
+
+人读文件由 `make_human_index.py` 生成，摘要取自 `13-全文解析缓存.jsonl` 的正文首句，不额外调模型。
+
+### 15.5 文件名带原文件名括注
+
+`finalize.py` 默认开启 `--keep-orig`：新名为 `类别_主体_名称_日期（原：原文件名）.ext`。
+- 括注部分不参与「4 段」校验
+- 总长上限放宽到 150 字符，超长先截原名
+- 用户不要时加 `--no-keep-orig`

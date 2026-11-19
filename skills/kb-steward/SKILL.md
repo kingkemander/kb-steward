@@ -16,7 +16,7 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 **第一步：下载引导器并校验**
 
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.3.10/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == 'c204f1e2233283160bc4f43fc6ba2f447789fb30038e39682bb53d2d4cb5fb0e',f'校验失败: {h}';p.write_bytes(d);print(p)"
+python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.4.0/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == 'ed1d200758cf82e6bfa9449d6c75fe58e29fcd4a1ea304379296514a4d67f669',f'校验失败: {h}';p.write_bytes(d);print(p)"
 ```
 
 **第二步：运行**
@@ -38,6 +38,8 @@ cat "<工作区>/.spaceagents/plugins/kb-steward/current.json"
 1. **新建会话**，智能体下拉选「知识库管家」。
 2. 第一句说：「我叫 XXX，XX 部门，职位是 XXX」。
 3. 再说：「帮我检查我的电脑目录文件，出第一层」。
+
+第一次运行它会先体检环境（缺哪些解析库），并按你的指定把依赖装到**你选的盘位**，不会动系统盘。
 
 它会先出清单和报告，**不改任何文件**。
 
