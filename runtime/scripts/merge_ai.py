@@ -12,28 +12,11 @@ import argparse
 import collections
 import json
 import os
+import categories
 import re
 
-LABEL = {
-    "00.01": "规则与命名", "00.03": "待复核",
-    "10.01": "公司资质", "10.02": "荣誉专利",
-    "20.01": "合同业绩", "20.02": "投标文件", "20.03": "验收评价", "20.04": "客户清单",
-    "30.01": "人员证件", "30.02": "劳动合同", "30.03": "体检培训", "30.04": "组织岗位",
-    "40.01": "制度", "40.02": "审批权限", "40.03": "SOP", "40.04": "报价规则",
-    "50.01": "产品资料", "50.02": "检测报告", "50.03": "TDS-MSDS", "50.04": "图纸CAD",
-    "50.05": "技术方案",
-    "60.01": "投标模板", "60.02": "方案模板", "60.03": "表单", "60.04": "品牌资产", "60.05": "营销内容",
-    "70.01": "发票票据", "70.02": "法务文件", "70.03": "审计报告", "70.04": "税务申报",
-    "80.01": "项目档案-进行中", "80.02": "项目档案-已归档",
-}
-WORD = {"00.01": "规则", "00.03": "待复核", "10.01": "资质", "10.02": "荣誉",
-        "20.01": "合同", "20.02": "投标", "20.03": "验收", "20.04": "客户",
-        "30.01": "证件", "30.02": "劳动", "30.03": "培训", "30.04": "组织",
-        "40.01": "制度", "40.02": "审批", "40.03": "SOP", "40.04": "报价",
-        "50.01": "产品", "50.02": "检测", "50.03": "TDS", "50.04": "图纸", "50.05": "方案",
-        "60.01": "投标模板", "60.02": "方案模板", "60.03": "表单", "60.04": "品牌", "60.05": "营销",
-        "70.01": "发票", "70.02": "法务", "70.03": "审计", "70.04": "税务",
-        "80.01": "项目", "80.02": "归档"}
+LABEL = categories.LABEL()
+WORD = categories.WORD()
 
 
 def clean(s, n):
@@ -51,6 +34,9 @@ def main():
     items = pkg["items"]
     cache_path = os.path.join(OUT, "14-AI补齐缓存.json")
     cache = json.load(open(cache_path, encoding="utf-8")) if os.path.isfile(cache_path) else {}
+    # 档3 视觉解析结果（纯图 PPT / 扫描 PDF / 证照图片）
+    vision_path = os.path.join(OUT, "14b-视觉解析缓存.json")
+    vision = json.load(open(vision_path, encoding="utf-8")) if os.path.isfile(vision_path) else {}
 
     dir_map = {}
     for x in items:
@@ -80,6 +66,34 @@ def main():
             it["category_word"] = WORD[ai["jd"]]
             it["ai_confidence"] = conf
             changed["jd"] += 1
+
+        # 档3 视觉结果（无正文文件的真正信息来源；覆盖「通用」兜底 / 空值 / 判不出的类目）
+        v = vision.get(it["source_path"]) or {}
+        if v.get("sensitive"):
+            it["flags"] = list(it.get("flags", [])) + ["S级-视觉判敏感"]
+            it["upload"] = "禁上传"
+        if v.get("subject"):
+            vc = float(v.get("confidence") or 0)
+            is_generic = it["subject"] in ("通用", "") or not it["subject"]
+            if is_generic or vc >= 0.5:
+                it["subject"] = v["subject"]
+                it["subject_source"] = "VLM-视觉"
+                it["subject_type"] = v.get("subject_type") or ""
+                changed["subject"] += 1
+        if v.get("date") and it["date"] in ("", "日期待补"):
+            it["date"] = v["date"]
+            it["date_source"] = "VLM-视觉"
+            changed["date"] += 1
+        vc2 = float(v.get("confidence") or 0)
+        if v.get("jd") and v["jd"] in LABEL and vc2 >= 0.6 and it["jd_code"] == "00.03":
+            it["jd_code"] = v["jd"]
+            it["category"] = f'{v["jd"]} {LABEL[v["jd"]]}'
+            it["category_word"] = WORD[v["jd"]]
+            it["ai_confidence"] = vc2
+            it["jd_source"] = "VLM-视觉"
+            changed["jd"] += 1
+        if v.get("desc"):
+            it["vision_desc"] = v["desc"]
 
         # 邻居投票兜底：本份判不出（00.03 或低置信），但同目录多数已明确 → 采用多数
         if it["jd_code"] == "00.03" and conf < 0.5:

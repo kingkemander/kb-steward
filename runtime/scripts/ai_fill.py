@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import categories
 import threading
 import time
 import urllib.request
@@ -26,39 +27,7 @@ SEG_LIMIT = 24000      # 单次请求喂给模型的正文上限（字符）
 SEG_OVERLAP = 800
 CACHE_NAME = "14-AI补齐缓存.json"
 
-PLAN_TEXT = """00.01 规则与命名
-00.03 待复核
-10.01 公司资质（营业执照/许可证/体系认证）
-10.02 荣誉专利
-20.01 合同业绩（合同/中标/业绩）
-20.02 投标文件（投标/招标/响应文件/标书）
-20.03 验收评价
-20.04 客户清单
-30.01 人员证件（职称/毕业证/社保/职业资格）
-30.02 劳动合同
-30.03 体检培训
-30.04 组织岗位
-40.01 制度
-40.02 审批权限
-40.03 SOP/操作手册
-40.04 报价规则
-50.01 产品资料
-50.02 检测报告
-50.03 TDS/MSDS
-50.04 图纸CAD
-50.05 技术方案/环评/可研/设计方案
-60.01 投标模板
-60.02 方案模板/演示模板
-60.03 表单（确认单/台账/签到表/空表）
-60.04 品牌资产（logo/企业简介/宣传册）
-60.05 营销内容（文案/脚本/分镜/账号分析/对标）
-70.01 发票票据
-70.02 法务文件
-70.03 审计报告
-70.04 税务申报
-80.01 项目档案-进行中（项目进度/周报/会议纪要）
-80.02 项目档案-已归档
-"""
+PLAN_TEXT = categories.PLAN_TEXT()
 
 FULL_PROMPT = """你是公司档案分类员。读这份文件的全文，只做三件事：选抽屉、抄主体、抄日期。
 
@@ -295,12 +264,17 @@ def main():
 
     # 不送模型的：中间产物/系统导出/工具样例/空表模板
     skip = set()
+    # 敏感件（S级/A级）：全文不外发，不送模型，只保留 classify 已判的字段
+    sensitive_skip = set()
     p09 = os.path.join(OUT, "09-分类结果.csv")
     if os.path.isfile(p09):
         for r in csv.DictReader(open(p09, encoding="utf-8-sig")):
-            if any(f in (r.get("flags") or "") for f in
+            fl = r.get("flags") or ""
+            if any(f in fl for f in
                    ("生成中间产物", "系统导出数据", "工具验证样例", "空表模板", "模板/演示件")):
                 skip.add(r["source_path"])
+            elif "S级" in fl or "A级" in fl:
+                sensitive_skip.add(r["source_path"])
     if args.limit:
         recs = recs[:args.limit]
 
@@ -339,6 +313,15 @@ def main():
                 cache[rec["source_path"]] = {"jd": "00.03", "subject": "", "subject_type": "",
                                              "date": "", "confidence": 0.2, "evidence": "",
                                              "mode": "skipped"}
+                done[0] += 1
+            return
+        # 敏感件：jd 留空、mode=sensitive，merge 阶段「只补不猜」会保留 classify 已判的字段，
+        # 绝不把账号密码/身份证等全文发到模型。
+        if rec["source_path"] in sensitive_skip:
+            with lock:
+                cache[rec["source_path"]] = {"jd": "", "subject": "", "subject_type": "",
+                                             "date": "", "confidence": 0.0, "evidence": "",
+                                             "mode": "sensitive"}
                 done[0] += 1
             return
         sib = [x for x in dir_map.get(os.path.dirname(rec["source_path"]), [])

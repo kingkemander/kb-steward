@@ -167,6 +167,9 @@ def main():
             print("\n没有 AI 结果，后续定目录会退回规则结果。")
     else:
         run("[6/10] AI 补齐主体与日期", [script("ai_fill.py"), "--out", OUT], allow_fail=True)
+        # 档3 视觉解析：纯图PPT/扫描PDF/证照图片（复用同一把 Key，看图抽主体/日期/类目）
+        run("[6.5/10] 视觉解析（纯图/扫描/证照）", [script("parse_vision.py"), "--out", OUT]
+            + scope_args + (["--deps", args.deps] if args.deps else []), allow_fail=True)
         # 每次都重跑合并：上游分类/抽取变了，旧 L3 会和新结果打架
         run("[7/10] 合并 AI 结果", [script("merge_ai.py"), "--out", OUT], allow_fail=True)
 

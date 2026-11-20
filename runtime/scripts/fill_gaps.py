@@ -13,15 +13,15 @@ import collections
 import csv
 import json
 import os
+import categories
 import re
 
 PROJECT_RE = re.compile(r"([\u4e00-\u9fa5A-Za-z0-9（）()·\-]{3,32}?(?:项目|工程))")
 PROJECT_BAD = ("项目档案", "项目管理", "项目启动", "项目总结", "项目计划", "工程项目管理",
                "职称", "评审", "申报", "系列", "示范区", "考评", "花名", "登记", "培训")
 TOOL_DIRS = ("/oda-install/", "/envcad-validation", "/kb-cad-parse/out/", "/cad-helper/")
-GENERIC_JD = {"00.01", "30.03", "40.01", "40.02", "40.03", "40.04",
-              "60.01", "60.02", "60.03", "60.04", "60.05"}
-MUST_SUBJECT_JD = {"10.01", "10.02", "20.01", "20.02", "20.03", "30.01", "30.02", "70.01", "70.02", "70.03", "70.04"}
+GENERIC_JD = categories.GENERIC_JD()
+MUST_SUBJECT_JD = categories.MUST_SUBJECT_JD()
 
 FORM_TMPL = re.compile(r"(表格|模板|格式|填报|说明|标准条件|申报表|花名表|考评表|登记表|推荐函|承诺书|审批表)")
 FILLED_HINT = re.compile(r"(有限公司|有限责任公司|设计院|研究院|大学|学院)")

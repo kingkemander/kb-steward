@@ -11,9 +11,10 @@ python3 scripts/make_report.py --out "$OUT" --root "$HOME" --name "姓名" --dep
 python3 scripts/classify_l2.py --out "$OUT" --root "$HOME" --name "姓名" --dept "部门"  # 3 分类
 python3 scripts/fill_gaps.py   --out "$OUT"                      # 4 批量消待补
 python3 scripts/parse_all.py   --out "$OUT" --root "$HOME"       # 5 全文解析
-python3 scripts/ai_fill.py     --out "$OUT"                      # 6 AI 补齐（需 Key）
-python3 scripts/merge_ai.py    --out "$OUT"                      # 6.5 合并为 L3
-python3 scripts/finalize.py    --out "$OUT" --root "$HOME"       # 7 定目录+改名映射
+python3 scripts/ai_fill.py     --out "$OUT"                      # 6 AI 补齐（需 Key，文本模型读全文）
+python3 scripts/parse_vision.py --out "$OUT" --root "$HOME"      # 6.5 视觉解析（需 Key，纯图/扫描/证照看图）
+python3 scripts/merge_ai.py    --out "$OUT"                      # 7 合并 AI+视觉 → L3
+python3 scripts/finalize.py    --out "$OUT" --root "$HOME"       # 8 定目录+改名映射
 ```
 
 第 7 步默认 dry-run；要真复制才加 `--apply --dest <目标目录>`（只复制，不移动）。
@@ -29,9 +30,11 @@ python3 scripts/finalize.py    --out "$OUT" --root "$HOME"       # 7 定目录+�
 | `scripts/classify_l2.py` | 3 读内容分类、抽主体/日期 |
 | `scripts/fill_gaps.py` | 4 模板豁免/项目名/目录继承/通用件/日期回退 |
 | `scripts/parse_all.py` | 5 全文解析（docx/pdf/pptx/xlsx/csv/doc/xls/dxf） |
-| `scripts/ai_fill.py` | 6 大模型定抽屉、补主体/日期（需 `SPACEAGENTS_AUTO_API_KEY`） |
-| `scripts/merge_ai.py` | 6.5 合并 AI 结果 → L3 |
-| `scripts/finalize.py` | 7 命名校验、定目录、出改名映射 |
+| `scripts/ai_fill.py` | 6 大模型定抽屉、补主体/日期（需 `SPACEAGENTS_AUTO_API_KEY`）；S级/A级敏感件跳过不送 |
+| `scripts/parse_vision.py` | 6.5 档3 视觉：VLM 看纯图 PPT/扫描 PDF/证照，抽描述+主体/日期/类目 |
+| `scripts/merge_ai.py` | 7 合并 AI + 视觉结果 → L3 |
+| `scripts/finalize.py` | 8 命名校验、定目录、出改名映射 |
+| `scripts/categories.py` | 类目加载器（读根目录 categories.json，各脚本唯一类目数据源） |
 | `scripts/export_package.py` | 导出上报包（只元数据）给部门经理 |
 | `scripts/merge_dept.py` | 收多份上报包，去重/查冲突/出部门目录 |
 | `scripts/make_html.py` | 生成可读 HTML 预览 |
@@ -64,9 +67,10 @@ python3 scripts/merge_dept.py --out ./部门融合 --packages-dir ./收到的上
 | `11/12` | 4 | 按目录批量补 / 待补处理说明 |
 | `13-全文解析缓存.jsonl` | 5 | 每份文件的全文（截断 6 万字） |
 | `14-AI补齐缓存.json` | 6 | 每份文件的 AI 判定（按文件缓存，重跑不计费） |
-| `15-最终目录树.md` | 7 | 入库目录树 + 待确认清单 |
-| `16-改名映射.csv/json` | 7 | 原路径 → 目标路径 |
-| `17-终稿索引包.json` | 7 | 定稿索引 |
+| `14b-视觉解析缓存.json` | 6.5 | 纯图/扫描/证照的 VLM 视觉结果（描述+主体/日期/类目） |
+| `15-最终目录树.md` | 8 | 入库目录树 + 待确认清单 |
+| `16-改名映射.csv/json` | 8 | 原路径 → 目标路径 |
+| `17-终稿索引包.json` | 8 | 定稿索引 |
 
 ## 安全边界
 
