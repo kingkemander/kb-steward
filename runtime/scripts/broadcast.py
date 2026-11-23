@@ -95,6 +95,16 @@ def main():
         todo = [i for i in items if any(a["do"] not in ("无需改动",) for a in i["actions"])]
         pkg = {
             "schema": "kb-steward/person-backlog@1.0",
+            "flow": {
+                "schema": "kb-steward/flow@1.0", "type": "个人回流包",
+                "stage": "公司→个人",
+                "from": {"name": (cat.get("flow") or {}).get("from", {}).get("name") or "", "role": "G"},
+                "to": {"name": name, "role": "E"},
+                "status": "broadcast",
+                "history": [{"at": datetime.datetime.now().isoformat(timespec="seconds"),
+                             "by": (cat.get("flow") or {}).get("from", {}).get("name") or "总经理",
+                             "action": "广播回流", "note": cat.get("version")}],
+            },
             "company": cat.get("company"),
             "catalog_version": cat.get("version"),
             "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -112,6 +122,32 @@ def main():
         w = csv.DictWriter(f, fieldnames=["姓名", "部门", "条目", "待办", "回流包"])
         w.writeheader()
         w.writerows(rows)
+
+    try:
+        sys.path.insert(0, HERE)
+        import flow as flowmod
+        ledger_root = flowmod.default_root()
+        ld = flowmod.load(ledger_root)
+        stamp = datetime.datetime.now().isoformat(timespec="seconds")
+        for it in ld["items"]:
+            if it.get("type") == "全公司目录" and it.get("status") != "broadcast":
+                it["status"] = "broadcast"
+                it.setdefault("history", []).append(
+                    {"at": stamp, "by": "总经理", "action": "已广播回流", "note": cat.get("version")})
+        for r in rows:
+            pid = f"回流包-{r['姓名']}-{cat.get('version')}"
+            if not any(x.get("id") == pid for x in ld["items"]):
+                ld["items"].append({
+                    "id": pid, "type": "个人回流包", "file": r["回流包"], "stage": "公司→个人",
+                    "from": {"name": cat.get("flow", {}).get("from", {}).get("name") or "", "dept": "", "role": "G"},
+                    "to": {"name": r["姓名"], "role": "E"}, "status": "broadcast",
+                    "created_at": stamp,
+                    "history": [{"at": stamp, "by": "总经理", "action": "已广播回流",
+                                 "note": f"{cat.get('version')}，待办 {r['待办']} 条"}],
+                })
+        flowmod.save(ledger_root, ld)
+    except Exception:
+        pass
 
     msg = (f"【总目录广播】{cat.get('company') or '公司'}｜kb-steward/company-catalog@1.0｜"
            f"版本 {cat.get('version')}｜部门 {'、'.join(cat.get('departments') or [])}｜"

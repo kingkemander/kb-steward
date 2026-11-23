@@ -138,10 +138,41 @@ handover.json 的 sha256：`{sha}`
         "generated_at": handover["generated_at"],
     }
 
+    # 流转单：随包走，谁拿到都能看到这包从谁到谁、走过哪些步
+    flow = {
+        "schema": "kb-steward/flow@1.0",
+        "package": zip_name,
+        "type": "上报包",
+        "stage": "个人→部门",
+        "from": {"name": args.name, "dept": args.dept, "role": args.role},
+        "to": {"name": args.to or "部门经理", "role": "M"},
+        "status": "created",
+        "created_at": handover["generated_at"],
+        "history": [{"at": handover["generated_at"], "by": args.name, "action": "生成上报包", "note": ""}],
+    }
+
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("handover.json", payload)
         z.writestr("README.md", readme)
         z.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        z.writestr("flow.json", json.dumps(flow, ensure_ascii=False, indent=2))
+
+    # 本地台账登记（你说一句就推进）
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import flow as flowmod
+        ledger_root = flowmod.default_root()
+        d = flowmod.load(ledger_root)
+        fid = f"上报包-{args.name}-{day}"
+        if not any(x.get("id") == fid for x in d["items"]):
+            d["items"].append({
+                "id": fid, "type": "上报包", "file": zip_name, "stage": "个人→部门",
+                "from": flow["from"], "to": flow["to"], "status": "created",
+                "created_at": flow["created_at"], "history": flow["history"],
+            })
+            flowmod.save(ledger_root, d)
+    except Exception:
+        pass
 
     msg = (f"【目录上行】{args.name}（{args.dept}/{args.role}）｜{SCHEMA}｜"
            f"载荷：{zip_name}｜需{args.to or '部门经理'}做部门融合")

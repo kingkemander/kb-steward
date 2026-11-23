@@ -99,6 +99,27 @@ def main():
         print("没有可用的部门包（20-部门融合包.json）")
         return 2
 
+    # 收到部门包 = 第二层完成：台账推进
+    try:
+        sys.path.insert(0, HERE)
+        import flow as flowmod
+        ledger_root = flowmod.default_root()
+        ld = flowmod.load(ledger_root)
+        stamp = datetime.datetime.now().isoformat(timespec="seconds")
+        for p_ in pkgs:
+            up = p_.get("flow") or {}
+            fid = f"部门融合包-{p_.get('dept') or ''}-{p_.get('manager') or ''}"
+            hit = next((x for x in ld["items"] if x.get("id") == fid
+                        or (x.get("type") == "部门融合包" and x.get("from", {}).get("dept") == p_.get("dept")
+                            and x.get("from", {}).get("name") == p_.get("manager"))), None)
+            if hit:
+                hit["status"] = "merged"
+                hit.setdefault("history", []).append(
+                    {"at": stamp, "by": args.manager or "总经理", "action": "已收并汇总", "note": p_.get("dept") or ""})
+        flowmod.save(ledger_root, ld)
+    except Exception:
+        pass
+
     all_items, dept_names, errors = [], [], []
     for p in pkgs:
         dept = p.get("dept") or ""
@@ -266,6 +287,19 @@ def main():
             "conflicts_blocking": len([c for c in conflicts if "版本" in c["type"] or "争议" in c["type"]]),
             "sensitive": sum(1 for x in merged if (x.get("final") or {}).get("action") == "hold_sensitive"),
         },
+        "flow": {
+            "schema": "kb-steward/flow@1.0",
+            "type": "全公司目录",
+            "stage": "公司→全员",
+            "from": {"name": args.manager or "", "role": "G"},
+            "to": {"name": "全员", "role": "E/M"},
+            "status": "created",
+            "history": [{"at": datetime.datetime.now().isoformat(timespec="seconds"),
+                         "by": args.manager or "总经理", "action": "生成全公司目录",
+                         "note": version}],
+            "upstream": [{"dept": p_.get("dept"), "manager": p_.get("manager"),
+                          "items": len(p_.get("items") or [])} for p_ in pkgs],
+        },
         "folders": folders_meta,
         "domains": auth_table,
         "conflicts": conflicts,
@@ -314,6 +348,26 @@ def main():
                  f"- 保留：{c['keep']}", f"- 另一份：{c['other']}",
                  f"- 建议：{c['action']}", "- 结论：[ ] 通过  [ ] 退回（原因：____）", ""]
     open(os.path.join(OUT, "33-总目录签核单.md"), "w", encoding="utf-8").write("\n".join(sign))
+
+    # 登记本次全公司目录
+    try:
+        sys.path.insert(0, HERE)
+        import flow as flowmod
+        ledger_root = flowmod.default_root()
+        ld = flowmod.load(ledger_root)
+        fid = f"全公司目录-{version}"
+        if not any(x.get("id") == fid for x in ld["items"]):
+            ld["items"].append({
+                "id": fid, "type": "全公司目录", "file": "30-全公司目录.json", "stage": "公司→全员",
+                "from": {"name": args.manager or "", "dept": "", "role": "G"},
+                "to": {"name": "全员", "role": "E/M"}, "status": "created",
+                "created_at": catalog["generated_at"],
+                "history": [{"at": catalog["generated_at"], "by": args.manager or "总经理",
+                             "action": "生成全公司目录", "note": version}],
+            })
+            flowmod.save(ledger_root, ld)
+    except Exception:
+        pass
 
     print(json.dumps({"version": version, **catalog["counts"], "departments": dept_names,
                       "outputs": ["30-全公司目录.json", "31-全公司目录树.md",

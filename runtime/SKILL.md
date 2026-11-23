@@ -610,6 +610,37 @@ python3 scripts/apply_back.py --out ./我的整理 --backlog ./公司/03-回流/
 - `42-回流改名映射.csv` —— 只含需要改名的，带完整 sha256
 - `43-回流对账.csv` —— 公司有我没有 / 我有公司没收
 
+### 14.5c 流转台账：人工传递时怎么知道到哪一步
+
+文件靠人发（飞书/微信/共享盘），系统看不到发送结果。所以用两层记录：
+
+**① 包内 `flow.json`**（随包走，不依赖网络）
+```json
+{"type":"上报包","stage":"个人→部门",
+ "from":{"name":"张三","dept":"交付部","role":"E"},
+ "to":{"name":"李经理","role":"M"},
+ "status":"created","history":[{"at":"…","by":"张三","action":"生成上报包"}]}
+```
+
+**② 本地台账 `~/.kb-steward/流转台账.json`**（全局共用）
+
+```bash
+python3 scripts/flow.py status                                   # 一张表：到谁、到哪步
+python3 scripts/flow.py mark --package 上报包-张三-20261123 --action sent --by 张三
+```
+
+自动推进（不用人记）：
+
+| 动作 | 谁触发 | 效果 |
+|---|---|---|
+| 生成上报包 | `export_package` 自动 | 登记 `created` |
+| 经理跑 `merge_dept` 读了这包 | 自动 | 上游标 `merged` |
+| 总经理跑 `merge_company` | 自动 | 部门包标 `merged`，登记全公司目录 |
+| `broadcast` 拆分 | 自动 | 全公司目录标 `broadcast`，登记每人回流包 |
+| 人工发出 | **你一句话** | `mark --action sent`（唯一需要人说的环节） |
+
+状态六档：`已生成（未发出）` → `已发出（等对方）` → `对方已收` → `已融合` → `已签核` → `已广播回流`。
+
 ### 14.6 指令表
 
 | 用户说 | 你做 |
@@ -619,6 +650,8 @@ python3 scripts/apply_back.py --out ./我的整理 --backlog ./公司/03-回流/
 | 经理改了这份的抽屉/主体/日期 | 写进 `revisions.json`，带 `--revisions` 重跑 `merge_dept.py` |
 | 公司汇总 / 总经理合并 / 出总目录 | 跑 `merge_company.py`，按 `33-总目录签核单.md` 汇报 |
 | 广播 / 下发 / 回流给每个人 | 跑 `broadcast.py`，再对每个人跑 `apply_back.py` |
+| 给经理了 / 发给王总了 | `flow.py mark --package <包> --action sent --by <你>` |
+| 到哪一步了 / 谁手上了 | `flow.py status` |
 | 这份包是谁的 | 打开 `handover.json` 的 `from` 与 `counts` |
 | 通过 / 签核 | 记录通过，产出部门包（不带正文） |
 | 退回 | 写明原因，回到原上报人 |

@@ -36,6 +36,7 @@ DOMAIN = [
     ("40", "全员"), ("50", "交付部"), ("60", "全员"),
     ("70", "财务+管理层"), ("80", "交付部"), ("00", "管理员"),
 ]
+HERE = os.path.dirname(os.path.abspath(__file__))
 LABEL = categories.LABEL()
 
 
@@ -44,12 +45,17 @@ def load_package(path):
     if path.endswith(".zip"):
         with zipfile.ZipFile(path) as z:
             data = z.read("handover.json")
-            manifest = json.loads(z.read("manifest.json")) if "manifest.json" in z.namelist() else {}
+            names = z.namelist()
+            manifest = json.loads(z.read("manifest.json")) if "manifest.json" in names else {}
+            up_flow = json.loads(z.read("flow.json")) if "flow.json" in names else {}
         sha = hashlib.sha256(data).hexdigest()
         if manifest.get("sha256") and manifest["sha256"] != sha:
             raise ValueError(f"{path} 校验失败：清单 {manifest['sha256'][:12]} ≠ 实际 {sha[:12]}")
-        return json.loads(data), os.path.basename(path)
-    return json.load(open(path, encoding="utf-8")), os.path.basename(path)
+        h = json.loads(data)
+        h["_flow"] = up_flow
+        return h, os.path.basename(path)
+    h = json.load(open(path, encoding="utf-8"))
+    return h, os.path.basename(path)
 
 
 def domain_of(jd):
@@ -89,6 +95,28 @@ def main():
             packages.append((h, src))
         except Exception as e:
             errors.append({"file": p, "error": str(e)})
+
+    # 收到包 = 上游那一环完成：自动把台账里对应项标 received + merged
+    try:
+        sys.path.insert(0, HERE)
+        import flow as flowmod
+        ledger_root = flowmod.default_root()
+        ld = flowmod.load(ledger_root)
+        stamp = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+        for h, src in packages:
+            up = h.get("_flow") or {}
+            fid = up.get("package") or src
+            hit = next((x for x in ld["items"]
+                        if x.get("id") == fid or x.get("file") == src
+                        or (up.get("package") and x.get("file") == up.get("package"))), None)
+            if hit:
+                hit["status"] = "merged"
+                hit.setdefault("history", []).append(
+                    {"at": stamp, "by": args.manager or "部门经理",
+                     "action": "已收并融合", "note": src})
+        flowmod.save(ledger_root, ld)
+    except Exception:
+        pass
 
     # 汇总所有条目
     all_items = []
@@ -278,6 +306,20 @@ def main():
             "dup_count": x.get("_dup_count", 1),
             "domain": domain_of(x["jd"]),
         } for x in merged],
+        "flow": {
+            "schema": "kb-steward/flow@1.0",
+            "type": "部门融合包",
+            "stage": "部门→公司",
+            "from": {"name": args.manager or "", "dept": args.dept or "", "role": "M"},
+            "to": {"name": "", "role": "G"},
+            "status": "created",
+            "history": [{"at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+                         "by": args.manager or "部门经理", "action": "生成部门融合包",
+                         "note": f"{len(packages)} 份上报包"}],
+            "upstream": [{"package": (h.get("_flow") or {}).get("package") or src,
+                          "from": (h.get("from") or {}).get("name"),
+                          "count": len(h.get("items") or [])} for h, src in packages],
+        },
         "folders": folders_meta,
         "revisions_applied": len(revs),
         "generated_by": {"manager": args.manager, "at": __import__("datetime").datetime.now().isoformat(timespec="seconds")},
