@@ -54,7 +54,7 @@ def main():
         it["flags"] = [f for f in it["flags"] if f != "主体待补"]
         it["flags"].append("空表模板")
         it["confidence"] = max(float(it["confidence"]), 0.8)
-        it["suggested_name"] = ""  # 模板不改名
+
         exempt += 1
 
     # ---------- 1.5) 工具验证样例：不当作公司文件 ----------
@@ -67,7 +67,6 @@ def main():
             it["category_word"] = "待复核"
             it["flags"] = [f for f in it["flags"] if f != "主体待补"] + ["工具验证样例"]
             it["confidence"] = 0.2
-            it["suggested_name"] = ""
             tools += 1
 
     # ---------- 1.6) 从文件名抽项目名（项目类允许用项目名当主体） ----------

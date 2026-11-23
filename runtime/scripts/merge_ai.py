@@ -113,9 +113,9 @@ def main():
                     changed["jd"] += 1
                     changed["dir_vote"] = changed.get("dir_vote", 0) + 1
 
-        if it["jd_code"] == "00.03":
-            it["suggested_name"] = ""
-            continue
+        # 类别词必须跟着最终抽屉走，否则会出现「规则_」却归在待复核这种错配
+        it["category_word"] = WORD.get(it["jd_code"], it.get("category_word") or "文件")
+
         stem = os.path.splitext(it["file_name"])[0]
         c = clean(it["category_word"], 12) or "文件"
         s = clean(it["subject"], 30) if it["subject"] else "主体待补"
