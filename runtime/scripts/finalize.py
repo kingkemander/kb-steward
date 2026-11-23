@@ -161,6 +161,11 @@ def main():
                 continue
             v = vision.get(sp) or {}
             t = texts.get(sp) or {}
+            # 只纳入「真读到东西」的图片：有视觉结果，或 OCR 出足够中文。
+            # 截图/表情包/中间产物不因为有图片就进目录。
+            ocr_text = (t.get("text") or "").strip()
+            if not v and len(ocr_text) < 50:
+                continue
             flags, upload = [], "未上传"
             if v.get("sensitive"):
                 flags += ["S级-视觉判敏感"]

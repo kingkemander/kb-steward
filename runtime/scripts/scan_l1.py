@@ -128,6 +128,8 @@ def main():
                     help="要检查的目录/盘，可重复：--root ~/Desktop --root ~/Documents")
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-files", type=int, default=0, help="0=不限")
+    ap.add_argument("--exclude", action="append", default=[],
+                    help="路径片段黑名单，可多次；如 --exclude 测试-全链路 --exclude 三层演示")
     args = ap.parse_args()
 
     roots = [os.path.abspath(r) for r in args.root]
@@ -170,6 +172,8 @@ def main():
                 continue
 
             for e in entries:
+                if any(k and k in e.path for k in (args.exclude or [])):
+                    continue
                 try:
                     # 跟随符号链接：用户桌面/文档常把大目录迁到外接盘后留链接，
                     # 不跟随会整目录漏扫（实测一次丢 105 份工作文档）
