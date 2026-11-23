@@ -16,7 +16,7 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 **第一步：下载引导器并校验**
 
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.4.9/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == '4bcb8beb6fe1673cc24d828e5609eb22ef506d3f80d866f93d1f171b456f4b74',f'校验失败: {h}';p.write_bytes(d);print(p)"
+python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.5.0/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == 'b61108abfce985d372a02ac8bb1f23d33f28d20d10fb5946eeb4f15b43601163',f'校验失败: {h}';p.write_bytes(d);print(p)"
 ```
 
 **第二步：运行**
@@ -42,6 +42,15 @@ cat "<工作区>/.spaceagents/plugins/kb-steward/current.json"
 5. **日期不许造**：只有年份就写年份，不许补成 `01-01`；`20250702` 这类紧凑写法要认。
 
 这五条写在 `agent-template.md` 与运行时 `SKILL.md` 里，安装后智能体自动遵守。
+
+## 三层闭环（一句话版）
+
+1. **员工**在自己电脑跑 → 出个人索引 + `上报包`
+2. **部门经理**收齐上报包 → `merge_dept`（改了就写 `revisions.json` 一起进）→ 出部门包
+3. **总经理**收齐部门包 → `merge_company` → 出**全公司目录**（带版本号、权限域、变更记录）
+4. **广播回流**：`broadcast` 拆成每人一份 → 每人 `apply_back` 拿到「我的文件在公司第几号抽屉、要改什么名、哪些不用传」
+
+公司层和回流都以「个人原始记录」为底，所以经理和总经理改过的每一处，最后都能精确回到具体某个人。
 
 ## 安装后怎么用（告诉用户）
 

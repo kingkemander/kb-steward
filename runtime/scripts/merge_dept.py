@@ -67,6 +67,8 @@ def main():
     ap.add_argument("--dept", default="")
     ap.add_argument("--manager", default="")
     ap.add_argument("--no-ai", action="store_true", help="只用规则概括，不调模型")
+    ap.add_argument("--revisions", action="append", default=[],
+                    help="经理修订 json（可多次）：[{sha256|source_path, field, to, reason}]")
     args = ap.parse_args()
 
     paths = list(args.packages)
@@ -117,7 +119,60 @@ def main():
         item["_sources"] = sorted({x["_from"] for x in group})
         item["_dup_count"] = len(group)
         item["_jd_conflict"] = len(jd_votes) > 1
+
+        def snap(x):
+            return {"jd": x.get("jd"), "subject": x.get("subject") or "",
+                    "date": x.get("date") or "",
+                    "suggested_name": x.get("suggested_name") or "",
+                    "action": x.get("action") or "",
+                    "owner_name": x.get("owner_name") or x.get("_from") or "",
+                    "owner_dept": x.get("owner_dept") or "",
+                    "source_path": x.get("source_path") or "",
+                    "sha256": x.get("sha256") or x.get("key") or ""}
+
+        item["origin"] = snap(base)
+        # 合并掉的副本也要留档：回流时得告诉每个人「你这份并到谁那儿了」
+        item["alt_origins"] = [snap(x) for x in group if x is not base]
+        item["revisions"] = []
         merged.append(item)
+
+    # 1.5) 应用经理修订（经理会改，改动必须进数据流，不能只留在 markdown 里）
+    revs = []
+    if args.revisions:
+        for rp in args.revisions:
+            if os.path.isfile(rp):
+                try:
+                    revs += json.load(open(rp, encoding="utf-8"))
+                except Exception as e:
+                    print(f"修订文件读取失败 {rp}: {e}")
+    if revs:
+        now = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+        n_applied = 0
+        for r in revs:
+            key = r.get("sha256") or r.get("key")
+            path = r.get("source_path")
+            field = r.get("field")
+            if not field:
+                continue
+            for it in merged:
+                hit = (key and (it.get("sha256") == key or it.get("key") == key)) \
+                    or (path and it.get("source_path") == path)
+                if not hit:
+                    continue
+                old = it.get(field)
+                if old == r.get("to"):
+                    continue
+                it[field] = r.get("to")
+                it.setdefault("revisions", []).append({
+                    "by": args.manager or "部门经理", "at": now,
+                    "field": field, "from": old, "to": r.get("to"),
+                    "reason": r.get("reason") or "",
+                })
+                n_applied += 1
+                # 改类目时同步类别名
+                if field == "jd":
+                    it["category"] = f'{r.get("to")} {LABEL.get(r.get("to"), "未分类")}'
+        print(f"应用经理修订 {n_applied} 条（{len(revs)} 条输入）")
 
     # 2) 同名同目录不同哈希 → 版本冲突
     by_target = collections.defaultdict(list)
@@ -146,6 +201,13 @@ def main():
             conflicts.append({"type": "待复核", "jd": x["jd"], "name": x["suggested_name"],
                               "keep": x["_from"], "other": "",
                               "action": "打开确认主体/日期"})
+
+    # 2.5) 每条写 final 快照（公司层以 final 为准，回流时与 origin 对账）
+    for it in merged:
+        it["final"] = {"jd": it.get("jd"), "subject": it.get("subject") or "",
+                       "date": it.get("date") or "",
+                       "suggested_name": it.get("suggested_name") or "",
+                       "action": it.get("action") or ""}
 
     # 3) 部门目录（每个文件夹带一句概括，融合/签核时用来判断里面是什么）
     tree = collections.defaultdict(list)
@@ -194,7 +256,7 @@ def main():
         meta.setdefault("ai_summary", "")
 
     dept_pkg = {
-        "schema": "kb-steward/dept-catalog@1.0",
+        "schema": "kb-steward/dept-catalog@2.0",
         "dept": args.dept or (packages[0][0].get("from", {}).get("dept", "") if packages else ""),
         "manager": args.manager,
         "members": sorted({h.get("from", {}).get("name", "") for h, _ in packages}),
@@ -217,6 +279,8 @@ def main():
             "domain": domain_of(x["jd"]),
         } for x in merged],
         "folders": folders_meta,
+        "revisions_applied": len(revs),
+        "generated_by": {"manager": args.manager, "at": __import__("datetime").datetime.now().isoformat(timespec="seconds")},
         "errors": errors,
     }
     json.dump(dept_pkg, open(os.path.join(OUT, "20-部门融合包.json"), "w", encoding="utf-8"),

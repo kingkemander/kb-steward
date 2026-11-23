@@ -145,6 +145,9 @@ python3 "{{RUNTIME_ROOT}}/scripts/export_package.py" --out ./kb-整理 --root "<
 |---|---|
 | 上报 / 交给经理 / 导出给部门 | `export_package.py`，给 zip 路径 + 标准消息 |
 | 融合 / 合并部门 / 收个人包 | `merge_dept.py`，按签核单汇报 |
+| 经理改了抽屉/主体/日期 | 写 `revisions.json`（sha256+field+to+reason），`merge_dept.py --revisions` 重跑 |
+| 公司汇总 / 总经理合并 | `merge_company.py` → 30 全公司目录（带版本）+ 31 目录树 + 32 冲突 + 33 签核单 + 34 变更记录 |
+| 广播 / 下发 / 回流 | `broadcast.py` 拆成人均一份 → 各人 `apply_back.py` 出「我的待办 + 位次表 + 回流改名映射」 |
 | 通过 / 签核 | 记录通过，产出部门包 |
 | 退回 | 写明原因，交回原上报人 |
 
