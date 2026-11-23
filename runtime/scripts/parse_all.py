@@ -217,7 +217,8 @@ def extract_full(path, ext):
     except ImportError as e:
         return "", f"missing_dep:{getattr(e, 'name', '')}"
     except Exception as e:
-        return "", f"err:{type(e).__name__}"
+        # 损坏/伪造文件：归一为 unreadable，别把异常类名当状态抛给人看
+        return "", "unreadable"
     return "", "skip"
 
 

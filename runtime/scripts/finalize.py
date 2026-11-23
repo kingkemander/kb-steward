@@ -98,7 +98,9 @@ def check_name(name):
     if re.search(r"【(重复|待OCR|待核|副本|最终|新建|作废|旧)】", name):
         reasons.append("状态标记进名字")
     if ext.lower() not in (".docx", ".doc", ".pdf", ".ppt", ".pptx", ".xlsx", ".xls",
-                           ".csv", ".dwg", ".dxf"):
+                           ".csv", ".dwg", ".dxf",
+                           ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".heic",
+                           ".tif", ".tiff"):
         reasons.append("扩展名不在白名单")
     return not reasons, reasons
 
@@ -133,6 +135,56 @@ def main():
                 "suggested_name": r["suggested_name"], "confidence": float(r["confidence"] or 0),
                 "flags": [f.strip() for f in r["flags"].split("/") if f.strip()],
                 "upload": r["upload"], "subject_type": "project" if "项目" in (r.get("subject") or "") else "",
+            })
+
+    # 图片/证照通道（OCR + 视觉）也要进终稿，否则营业执照/身份证这类资质资产会丢
+    p3 = os.path.join(OUT, "03-图片与CAD候选.csv")
+    p14b = os.path.join(OUT, "14b-视觉解析缓存.json")
+    vision = json.load(open(p14b, encoding="utf-8")) if os.path.isfile(p14b) else {}
+    texts = {}
+    p13 = os.path.join(OUT, "13-全文解析缓存.jsonl")
+    if os.path.isfile(p13):
+        for line in open(p13, encoding="utf-8"):
+            try:
+                r13 = json.loads(line)
+                texts[r13["source_path"]] = r13
+            except Exception:
+                pass
+    if os.path.isfile(p3):
+        have = {it["source_path"] for it in items}
+        words = categories.WORD()
+        for r in csv.DictReader(open(p3, encoding="utf-8-sig")):
+            if r.get("通道") == "CAD":
+                continue
+            sp = r["相对路径"]
+            if sp in have:
+                continue
+            v = vision.get(sp) or {}
+            t = texts.get(sp) or {}
+            flags, upload = [], "未上传"
+            if v.get("sensitive"):
+                flags += ["S级-视觉判敏感"]
+                upload = "禁上传"
+            if v:
+                flags.append("视觉")
+            elif not (t.get("text") or "").strip():
+                flags.append("待OCR")
+            jd = v.get("jd") or "00.03"
+            stem = os.path.splitext(r["文件名"])[0]
+            _c = (words.get(jd, "文件") or "文件")[:12]
+            _s = (v.get("subject") or "主体待补")[:30]
+            _n = stem[:40]
+            _d = v.get("date") or "日期待补"
+            suggested = "" if v.get("sensitive") else f"{_c}_{_s}_{_n}_{_d}{r['扩展名']}"
+            items.append({
+                "source_path": sp, "file_name": r["文件名"], "ext": r["扩展名"],
+                "size": int(r["字节"] or 0), "jd_code": jd,
+                "subject": v.get("subject") or "", "date": v.get("date") or "",
+                "suggested_name": suggested, "confidence": float(v.get("confidence") or 0),
+                "flags": flags, "upload": upload,
+                "subject_type": v.get("subject_type") or "",
+                "category": f"{jd} {categories.LABEL().get(jd, '未分类')}",
+                "category_word": words.get(jd, "文件"),
             })
 
     EXCL = ("生成中间产物", "系统导出数据", "工具验证样例", "空表模板")
