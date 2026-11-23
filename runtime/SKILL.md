@@ -665,6 +665,21 @@ python3 scripts/run_all.py --out ./kb-整理 --name "<姓名>" --dept "<部门>"
 概括由 `finalize.py` 按四件事算：**份数 · 主体分布（前 3）· 日期范围 · 格式分布（前 3）**，纯规则、可复现、不调模型。
 同时写进 `17-终稿索引包.json` 的 `folders` 字段（对象形式：`count/subjects/date_range/exts/summary`），部门融合时由 `merge_dept.py` 聚合为「份数 · 主体 · 日期 · 来自哪些人」。
 
+### 15.4b 没有 API Key 时：AI 判断由智能体自己做
+
+云端额度不足或没有 Key 时，不要放弃 AI 判断——把判断交给**正在对话的智能体**：
+
+```bash
+python3 scripts/agent_fill.py --out "$OUT" --export          # 1) 导出待判清单 agent-tasks/tasks-*.jsonl
+# 2) 智能体读 jsonl，写 results-*.jsonl（每行一份：path/jd/subject/date/confidence/evidence；测试产物写 no_ingest:true）
+python3 scripts/agent_fill.py --out "$OUT" --apply --results agent-tasks/results-01.jsonl
+python3 scripts/merge_ai.py --out "$OUT" && python3 scripts/finalize.py --out "$OUT" --root "$HOME"
+```
+
+- 敏感件只导出文件名/路径，不导出正文
+- `no_ingest:true` 的条目直接判「不入库」，不再按名字猜抽屉
+- 模型端点解析见 `scripts/llm.py`：显式端点 > 本地 Ollama > 云端，自动选择
+
 ### 15.5 文件名带原文件名括注
 
 `finalize.py` 默认开启 `--keep-orig`：新名为 `类别_主体_名称_日期（原：原文件名）.ext`。

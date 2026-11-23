@@ -21,9 +21,9 @@ import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-API = os.environ.get("SPACEAGENTS_AUTO_API_URL", "https://token.spaceagents.cn/v1/chat/completions")
-KEY = os.environ.get("SPACEAGENTS_AUTO_API_KEY", "")
-MODEL = "auto"
+import llm
+
+API, KEY, MODEL, LLM_SOURCE = llm.text_endpoint()
 CACHE_NAME = "18-文件夹概括缓存.json"
 
 PROMPT = """你在给一个公司文件柜写抽屉标签。根据下面信息，写**一句**中文说明，供归档审阅和上传时判断内容。
@@ -66,7 +66,8 @@ def call_llm(prompt, retry=2, max_tokens=8000):
     return ""
 
 
-def summarize(folders, items, use_ai=True):
+def summarize(folders, items, use_ai=True, old=None):
+    old = old or {}
     """folders: {name: meta}；items: 17 的 items。返回 {name: {..., ai_summary}}"""
     by_folder = collections.defaultdict(list)
     for it in items:
@@ -92,7 +93,8 @@ def summarize(folders, items, use_ai=True):
                 files="\n".join(files) or "（无）")
             meta["ai_summary"] = call_llm(prompt)
         if not meta["ai_summary"]:
-            meta["ai_summary"] = rule_summary(name, meta)
+            prev = (old.get(name) or {}).get("ai_summary") or ""
+            meta["ai_summary"] = prev or rule_summary(name, meta)
         out[name] = meta
     return out
 
@@ -151,7 +153,7 @@ def main():
     cache_path = os.path.join(OUT, CACHE_NAME)
     cache = json.load(open(cache_path, encoding="utf-8")) if os.path.isfile(cache_path) else {}
 
-    result = summarize(folders, pkg.get("items", []), use_ai=use_ai)
+    result = summarize(folders, pkg.get("items", []), use_ai=use_ai, old=cache)
     n_ai = sum(1 for v in result.values() if v.get("ai_summary"))
     pkg["folders"] = result
     json.dump(pkg, open(p17, "w", encoding="utf-8"), ensure_ascii=False, indent=2)

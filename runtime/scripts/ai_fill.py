@@ -19,9 +19,9 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 # 接口地址优先取环境变量，便于换通道/自建代理；不在此文件写任何密钥。
-API = os.environ.get("SPACEAGENTS_AUTO_API_URL", "https://token.spaceagents.cn/v1/chat/completions")
-KEY = os.environ.get("SPACEAGENTS_AUTO_API_KEY", "")
-MODEL = "auto"
+import llm
+
+API, KEY, MODEL, LLM_SOURCE = llm.text_endpoint()
 
 SEG_LIMIT = 24000      # 单次请求喂给模型的正文上限（字符）
 SEG_OVERLAP = 800

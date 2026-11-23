@@ -159,7 +159,17 @@ def main():
     run("[5/10] 全文解析", [script("parse_all.py"), "--out", OUT] + scope_args
         + (["--deps", args.deps] if args.deps else []))
 
-    key = os.environ.get("SPACEAGENTS_AUTO_API_KEY", "")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import llm
+        _u, _k, _m, _src = llm.text_endpoint()
+        print(f"模型通道：{llm.describe(_src)}（{_m or '默认'}）")
+        if _src.startswith("cloud") and not _k:
+            print("  未配置 Key：AI 补齐会跳过，先跑规则结果。")
+    except Exception:
+        pass
+
+    key = os.environ.get("SPACEAGENTS_AUTO_API_KEY", "") or "local"
     if args.skip_ai or not key:
         print("\n[6/10] 跳过 AI 补齐" + ("（--skip-ai）" if args.skip_ai else "（未配置 SPACEAGENTS_AUTO_API_KEY）"))
         print("[7/10] 跳过合并（无 AI 结果）")

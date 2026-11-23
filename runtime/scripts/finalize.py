@@ -192,6 +192,17 @@ def main():
         except OSError:
             return ""
 
+    # AI 直判阶段标为 skipped 的（工具测试产物等）直接不入库
+    skipped = set()
+    p14 = os.path.join(OUT, "14-AI补齐缓存.json")
+    if os.path.isfile(p14):
+        try:
+            for k, v in json.load(open(p14, encoding="utf-8")).items():
+                if (v or {}).get("mode") == "no_ingest":
+                    skipped.add(k)
+        except Exception:
+            pass
+
     owner = {"name": args.name, "dept": args.dept,
              "role": ROLE_MAP.get((args.role or "").strip(), "")}
     override_count = []
@@ -200,6 +211,10 @@ def main():
         name = it.get("suggested_name") or ""
         action = "rename"
         reasons = []
+
+        if it["source_path"] in skipped:
+            action = "no_ingest"
+            reasons.append("AI判定:不入库")
 
         # 文件名强规则优先于 AI 判定
         raw_name = os.path.basename(it.get("source_path") or it.get("file_name") or "")

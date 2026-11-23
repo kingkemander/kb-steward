@@ -28,9 +28,9 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-API = os.environ.get("SPACEAGENTS_AUTO_API_URL", "https://token.spaceagents.cn/v1/chat/completions")
-KEY = os.environ.get("SPACEAGENTS_AUTO_API_KEY", "")
-MODEL = os.environ.get("SPACEAGENTS_AUTO_VISION_MODEL", "auto")
+import llm
+
+API, KEY, MODEL, LLM_SOURCE = llm.vision_endpoint()
 
 CACHE_NAME = "14b-视觉解析缓存.json"
 MAX_IMAGE_MB = 18          # 单张 base64 图超过则跳过（端点通常吃不下）
