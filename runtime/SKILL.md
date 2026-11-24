@@ -787,6 +787,23 @@ python3 scripts/merge_ai.py --out "$OUT" && python3 scripts/finalize.py --out "$
 - `no_ingest:true` 的条目直接判「不入库」，不再按名字猜抽屉
 - 模型端点解析见 `scripts/llm.py`：显式端点 > 本地 Ollama > 云端，自动选择
 
+### 15.4c CAD 后解析：图纸内容单独读，不阻塞第一批
+
+CAD（DXF/DWG）里没有段落文字，第一批只按文件名/目录判类目，图纸里的**工程名、建设单位、设计单位、图号、日期**都拿不到。所以单独做一步：
+
+```bash
+python3 scripts/parse_cad.py --out ./kb-整理 --root "$HOME" --skip-dwg   # 先跑 DXF（快，几十秒）
+python3 scripts/parse_cad.py --out ./kb-整理 --root "$HOME" --only-dwg   # 再跑 DWG（慢，要转换）
+python3 scripts/merge_ai.py --out ./kb-整理 && python3 scripts/finalize.py --out ./kb-整理 --root "$HOME"
+```
+
+- DXF 用 `ezdxf` 直读；DWG 用 `dwg2dxf`（LibreDWG）转 DXF 再读；都读不到就标「CAD 无图签文字」
+- 抽图签字段：工程名称 / 建设单位 / 设计单位 / 图名 / 图号 / 日期 / 比例
+- 结果写回 `14-AI补齐缓存.json`（mode=cad），后续 merge/finalize 自动用
+- 自动跳过：工具中间产物（oda_out、libredwg_out、tmp）、>30MB 超大图
+
+为什么不在第一批跑：一张 20MB 的 DWG 转换要 1–2 分钟，会把整轮拖慢；目录先出来，CAD 慢慢补。
+
 ### 15.5 文件名带原文件名括注
 
 `finalize.py` 默认开启 `--keep-orig`：新名为 `类别_主体_名称_日期（原：原文件名）.ext`。

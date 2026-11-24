@@ -109,6 +109,8 @@ def main():
     ap.add_argument("--deps", default="", help="依赖目录（install_deps.py 装到的地方）")
     ap.add_argument("--max-files", type=int, default=0)
     ap.add_argument("--skip-ai", action="store_true")
+    ap.add_argument("--with-cad", action="store_true",
+                    help="同时解析 CAD 图纸内容（慢，建议目录出来后再单独跑 parse_cad.py）")
     ap.add_argument("--allow-missing-deps", action="store_true")
     ap.add_argument("--list-roots", action="store_true")
     args = ap.parse_args()
@@ -187,6 +189,9 @@ def main():
                               "--root", scopes[0], "--keep-orig",
                               "--name", args.name, "--dept", args.dept,
                               "--role", getattr(args, "role", "") or ""])
+    if args.with_cad:
+        run("[8.5/10] CAD 图纸解析", [script("parse_cad.py"), "--out", OUT,
+                                      "--root", scopes[0]], allow_fail=True)
     run("[9/10] 文件夹一句话概括", [script("folder_summary.py"), "--out", OUT], allow_fail=True)
     run("[10/10] 生成人读索引", [script("make_human_index.py"), "--out", OUT,
                              "--name", args.name, "--dept", args.dept])

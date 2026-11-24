@@ -16,7 +16,7 @@ description: "安装、更新、初始化「知识库管家」智能体。当用
 **第一步：下载引导器并校验**
 
 ```bash
-python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.5.4/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == 'f9421c1af5090deac400943959d05978711c9db04c48d0b4a6461192e6da835f',f'校验失败: {h}';p.write_bytes(d);print(p)"
+python3 -c "import hashlib,pathlib,urllib.request;u='https://github.com/kingkemander/kb-steward/releases/download/v1.5.5/bootstrap.py';p=pathlib.Path('<工作区>')/'.spaceagents/plugins/kb-steward/bootstrap.py';p.parent.mkdir(parents=True,exist_ok=True);d=urllib.request.urlopen(u,timeout=60).read();h=hashlib.sha256(d).hexdigest();assert h == '7986955533abc58c2a5c3807249633d6c0e6ad2ecc645a76678278ba80bfc8b2',f'校验失败: {h}';p.write_bytes(d);print(p)"
 ```
 
 **第二步：运行**
@@ -51,6 +51,17 @@ cat "<工作区>/.spaceagents/plugins/kb-steward/current.json"
 4. **广播回流**：`broadcast` 拆成每人一份 → 每人 `apply_back` 拿到「我的文件在公司第几号抽屉、要改什么名、哪些不用传」
 
 公司层和回流都以「个人原始记录」为底，所以经理和总经理改过的每一处，最后都能精确回到具体某个人。
+
+## CAD 图纸单独解析
+
+第一批只出目录（CAD 按文件名/目录判类目）。图纸里的工程名、建设单位、图号要单独读：
+
+```bash
+python3 scripts/parse_cad.py --out <整理目录> --root "$HOME" --skip-dwg
+python3 scripts/parse_cad.py --out <整理目录> --root "$HOME" --only-dwg
+```
+
+本机需要 `ezdxf`（DXF）和 `dwg2dxf`（DWG，LibreDWG）。读出来会覆盖原来的"通用/主体待补"。
 
 ## 安装后怎么用（告诉用户）
 
