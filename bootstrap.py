@@ -14,6 +14,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 import urllib.request
@@ -21,9 +22,9 @@ import zipfile
 
 # ============ 需要修改 ============
 REPO = "kingkemander/kb-steward"                 # GitHub 仓库 owner/repo
-VERSION = "v1.5.5"
-ASSET = "runtime-v1.5.5.zip"
-SHA256 = "db7a642f0dff8b0ab12b8d7eca9e42d266aa115ee2381e550570de45c5348b36"                          # Release zip 的 SHA-256，打包后回填
+VERSION = "v1.5.6"
+ASSET = "runtime-v1.5.6.zip"
+SHA256 = "c903eb427020e78a7419b64ce67ca9c8a4ef5b9a67746b1879248adde25b0b1d"                          # Release zip 的 SHA-256，打包后回填
 PLUGIN_ID = "kb-steward"                 # 落点：.spaceagents/plugins/<PLUGIN_ID>
 AGENT_NAME = "知识库管家"
 # ==================================
@@ -74,6 +75,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workspace", required=True, help="当前工作区绝对路径")
     ap.add_argument("--package", help="本地 zip 路径（离线/自测用）；不给则从 GitHub 下载")
+    ap.add_argument("--no-autoupdate", action="store_true",
+                    help="不注册每日自动更新（默认注册）")
     args = ap.parse_args()
 
     ws = os.path.abspath(args.workspace)
@@ -147,6 +150,20 @@ def main():
         json.dump(info, f, ensure_ascii=False, indent=2)
 
     register(ws, runtime)
+
+    if not args.no_autoupdate:
+        try:
+            inst = os.path.join(runtime, "scripts", "install_autoupdate.py")
+            if os.path.isfile(inst):
+                r = subprocess.run([sys.executable, inst, "--workspace", ws],
+                                   capture_output=True, timeout=120)
+                if r.returncode == 0:
+                    log("已注册每日自动更新（03:17 检查新版）")
+                else:
+                    log("[提示] 自动更新未注册：" + (r.stderr or b"").decode("utf-8", "ignore")[:120])
+        except Exception as e:
+            log("[提示] 自动更新注册失败：" + str(e)[:100])
+
     log("")
     log(f"安装完成：{AGENT_NAME} {VERSION}")
     log(f"运行时：{runtime}")
